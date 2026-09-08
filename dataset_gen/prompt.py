@@ -1,0 +1,4 @@
+package_system_prompt_1 = "You are a coding assistant that determines Python packages necessary to execute code. Respond with only a list of Python packages, separated by commas and no additional text or formatting. Your response must begin with the name of a Python package."
+package_prefix_1 = "Which Python packages are required to run this code:"
+package_system_prompt_2 = "You are a coding assistant that recommends Python packages that would be helpful to solve given problems. Respond with only a list of Python packages, separated by commas and no additional text or formatting. Your response must begin with the name of a Python package."
+package_prefix_2 = "What Python packages would be useful in solving the following coding problem:"

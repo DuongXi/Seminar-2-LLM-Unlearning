@@ -1,0 +1,5 @@
+pandas @ file:///C:/b/abs_3awk0iw2ab/croot/pandas_1709590545218/work/dist/pandas-2.2.1-cp310-cp310-win_amd64.whl#sha256=67ccea55bf70e6c1584e553f44140c496fc3257b6a541afaf3c5855f4b9785f9
+sentence-transformers==2.7.0
+transformers==4.46.1
+tqdm @ file:///C:/b/abs_77wju137gk/croot/tqdm_1724853945787/work
+torch==2.2.2
