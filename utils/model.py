@@ -11,9 +11,11 @@ def is_lora_model(model_path: str) -> bool:
 
 def load_model(model_path:str=None,
                device_map="auto", 
-               dtype=torch.float16
+               dtype=torch.float16,
+               padding_side:str="right"
                ):
-    tokenizer, model = None, None
+    tokenizer:AutoTokenizer = None
+    model:AutoModelForCausalLM = None
 
     if model_path is not None:
         if is_lora_model(model_path=model_path):
@@ -40,6 +42,8 @@ def load_model(model_path:str=None,
             )
             model = base
             tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
+    
+    tokenizer.padding_side = padding_side
     return tokenizer, model
 
 
