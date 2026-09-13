@@ -1,0 +1,56 @@
+{
+  "model_name": "qwen2.5-coder-1.5b",
+  "seed": 42,
+  "dtype": "auto",
+  "data": {
+    "max_train_samples_per_split": null
+  },
+  "eval": {
+    "n_eval_prompts": 150,
+    "batch_size": 8,
+    "package_modes": [
+      1,
+      2
+    ]
+  },
+  "methods": {
+    "base": {
+      "enabled": true
+    },
+    "ga": {
+      "enabled": true,
+      "lr": 1e-05,
+      "num_train_epochs": 3,
+      "use_lora": true,
+      "lora_rank": 16
+    },
+    "npo": {
+      "enabled": true,
+      "lr": 1e-05,
+      "num_train_epochs": 3,
+      "use_lora": true,
+      "lora_rank": 16
+    },
+    "ga_plain": {
+      "enabled": true,
+      "lr": 1e-05,
+      "num_train_epochs": 3,
+      "lambda_retain": 1.0,
+      "lambda_forget": 0.5,
+      "use_lora": true,
+      "lora_rank": 16
+    },
+    "npo_plain": {
+      "enabled": true,
+      "lr": 1e-05,
+      "num_train_epochs": 3,
+      "lambda_retain": 1.0,
+      "lambda_forget": 0.5,
+      "use_lora": true,
+      "lora_rank": 16
+    },
+    "steering": {
+      "enabled": false
+    }
+  }
+}

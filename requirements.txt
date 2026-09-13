@@ -1,0 +1,17 @@
+# Pinned to the exact versions this pipeline has been validated against
+# (Kaggle T4, Python 3.11/3.12). `torch` is deliberately NOT listed here --
+# install the build that matches your CUDA version first (see README.md
+# "Installation"); Kaggle notebooks and Colab already have a working one
+# preinstalled.
+transformers==4.57.6
+tokenizers==0.22.2
+accelerate==1.12.0
+peft==0.18.1
+datasets==4.5.0
+huggingface_hub==0.36.1
+safetensors==0.7.0
+sentencepiece==0.2.1
+pandas==2.3.3
+llguidance==1.1.0
+tqdm
+sentence-transformers==2.7.0

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pkg-halluc"
+version = "0.1.0"
+description = "Compare package-hallucination mitigation methods (GA, NPO, their no-tri-mask plain ablations, and eventually Representation Steering) for code-generating LLMs on a shared evaluation harness."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "transformers==4.57.6",
+    "tokenizers==0.22.2",
+    "accelerate==1.12.0",
+    "peft==0.18.1",
+    "datasets==4.5.0",
+    "huggingface_hub==0.36.1",
+    "safetensors==0.7.0",
+    "sentencepiece==0.2.1",
+    "pandas==2.3.3",
+    "llguidance==1.1.0",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+pkg_halluc = "pkg_halluc.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pkg_halluc*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

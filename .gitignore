@@ -1,0 +1,38 @@
+# --- runtime artifacts (everything under work_dir/) -------------------------
+# Fetched third-party source (AU), downloaded model weights, generated
+# tri-mask/plain training data, fine-tuned checkpoints, eval runs, and
+# reports are all runtime output -- see paths.py. Re-created by
+# `pkg_halluc fetch-deps` / `download-model` / `build-data` / `train` /
+# `evaluate` / `report`.
+.workdir/
+third_party/
+outputs/
+eval_runs/
+generated_data/
+models/
+checkpoints/
+
+# Kaggle mounts these read-only at /kaggle/input and writes to /kaggle/working
+# outside the repo -- nothing Kaggle-specific to ignore here.
+
+# --- Python -------------------------------------------------------------------
+__pycache__/
+*.pyc
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# --- editors / OS ---------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+
+# --- local overrides --------------------------------------------------------
+*.local.json
+.env
