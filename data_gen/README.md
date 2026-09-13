@@ -1,4 +1,4 @@
-## 📊 Dataset Generation Note
+## Dataset Generation Note
 
 **Included prompt datasets:**
 - `LLM_AT.json` – LLM-generated prompts based on **all-time** most popular packages  
@@ -6,7 +6,7 @@
 - `SO_AT.json` – Top Stack Overflow questions (all-time)  
 - `SO_LY.json` – Top Stack Overflow questions (last-year)
 
-## 📜 Dataset Source
+## Dataset Source
 
 ```bibtex
 @inproceedings{spracklen2025packagehallucination,

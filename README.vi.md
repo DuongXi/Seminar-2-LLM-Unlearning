@@ -45,7 +45,7 @@
 ## Cài đặt
 
 ```bash
-git clone https://github.com/<your-username>/<your-repo>.git
+git clone https://github.com/DuongXi/Seminar-2-LLM-Unlearning
 
 
 
@@ -85,7 +85,7 @@ preset ở trên đều override `use_lora: true` và `eval.batch_size` thấp h
   "seed": 42,
   "dtype": "auto",                    // "auto" | "bfloat16" | "float16" -- auto tự chọn bf16 nếu GPU hỗ trợ
   "data": {
-    "max_train_samples_per_split": null // set số nhỏ để chạy thử nhanh cả 4 method (ga, npo, ga_plain, npo_plain)
+    "max_train_samples_per_split": null // set null de chay full data, set số nhỏ để chạy thử nhanh
   },
   "eval": {
     "n_eval_prompts": 150,
