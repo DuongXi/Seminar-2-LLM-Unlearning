@@ -6,8 +6,8 @@
 | **Base** | tham chiếu (model gốc, chưa đổi gì) | -- |
 | **GA** (Gradient Ascent) | fine-tune toàn bộ trọng số, dữ liệu tĩnh, mask theo token (tri-mask) | lấy từ code của paper *Adaptive Unlearning* (AU) |
 | **NPO** (Negative Preference Optimization) | fine-tune toàn bộ trọng số, dữ liệu tĩnh, mask theo token (tri-mask) | lấy từ code của AU |
-| **GA-plain** | fine-tune toàn bộ trọng số, cùng dữ liệu tĩnh, loss trên toàn bộ response (không tri-mask) | code riêng|
-| **NPO-plain** | fine-tune toàn bộ trọng số, cùng dữ liệu tĩnh, loss trên toàn bộ response (không tri-mask) | code riêng |
+| **GA-plain** | fine-tune toàn bộ trọng số, cùng dữ liệu tĩnh,không tri-mask | code riêng|
+| **NPO-plain** | fine-tune toàn bộ trọng số, cùng dữ liệu tĩnh, không tri-mask | code riêng |
 | **Representation Steering** | *chưa cài đặt* | |
 
 
