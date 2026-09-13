@@ -1,95 +1,95 @@
-# pkg-halluc: Package Hallucination Mitigation
 
-| Method | Kind | Source |
+# pkg-halluc: Giảm thiểu Package Hallucination
+
+| Method | Loại | Nguồn |
 | --- | --- | --- |
-| **Base** | reference (unmodified base model) | -- |
-| **GA** (Gradient Ascent) | full fine-tune, static dataset, per-token mask (tri-mask) | from the *Adaptive Unlearning* (AU) paper's code |
-| **NPO** (Negative Preference Optimization) | full fine-tune, static dataset, per-token mask (tri-mask) | from AU's code |
-| **GA-plain** | full fine-tune, same static dataset, whole-response loss (no tri-mask) | own code |
-| **NPO-plain** | full fine-tune, same static dataset, whole-response loss (no tri-mask) | own code |
-| **Representation Steering** | *not implemented yet* | |
+| **Base** | tham chiếu (model gốc, chưa đổi gì) | -- |
+| **GA** (Gradient Ascent) | fine-tune toàn bộ trọng số, dữ liệu tĩnh, mask theo token (tri-mask) | lấy từ code của paper *Adaptive Unlearning* (AU) |
+| **NPO** (Negative Preference Optimization) | fine-tune toàn bộ trọng số, dữ liệu tĩnh, mask theo token (tri-mask) | lấy từ code của AU |
+| **GA-plain** | fine-tune toàn bộ trọng số, cùng dữ liệu tĩnh, loss trên toàn bộ response (không tri-mask) | code riêng|
+| **NPO-plain** | fine-tune toàn bộ trọng số, cùng dữ liệu tĩnh, loss trên toàn bộ response (không tri-mask) | code riêng |
+| **Representation Steering** | *chưa cài đặt* | |
 
 
-## Directory structure
+## Cấu trúc thư mục
 
 ```
-├── configs/            # JSON config files
-├── data/               # Package Hallucination dataset for Python
-├── data_gen/           # scripts that generate the full dataset
-├── notebooks/          # Kaggle notebook
-├── scripts/            # quickstart.sh -- script to run the full pipeline
-├── steering_ref/       # archived TSV code (unmodified, from the paper)
-├── pkg_halluc/         # the pipeline code
-│   ├── paths.py            # Kaggle-vs-local environment detection (run on Kaggle or local)
-│   ├── config.py           # config loading
-│   ├── cli.py              # the `pkg_halluc` CLI
-│   ├── model_setup.py      # base model download
-│   ├── package_loader/     # data loader
-│   ├── deps/               # fetch + patch + copy the AU paper's code
-│   ├── tok_data/           # builds the static training data for GA/NPO
-│   ├── scripts/            # train_plain.py -- trains GA-plain/NPO-plain
-│   ├── methods/            # per-method definitions (base/ga/npo/ga_plain/npo_plain)
-│   ├── eval/               # evaluation for every method
-│   ├── report/             # aggregates eval_runs/* into the final tables
-│   ├── templates/          # supporting run scripts
-│   └── utils/              # subprocess runner shared by every pipeline stage
+├── configs/            # File config JSON
+├── data/               # dataset PackageHallucination cho Python
+├── data_gen/           # script gen full dataset PackageHallucination
+├── notebooks/          # notebook Kaggle
+├── scripts/            # quickstart.sh -- script de chạy full pipeline
+├── steering_ref/       # code TSV lưu trữ (nguyên bản tu paper) 
+├── pkg_halluc/         # code pipeline
+│   ├── paths.py            # nhận diện môi trường Kaggle-vs-local (run on kaggle or local)
+│   ├── config.py           # đọc config
+│   ├── cli.py              # CLI `pkg_halluc`
+│   ├── model_setup.py      # tải model gốc
+│   ├── package_loader/     # data_loader
+│   ├── deps/               # tải + vá + copy code của paper AU
+│   ├── tok_data/           # dựng dữ liệu train tĩnh cho GA/NPO
+│   ├── scripts/            # train_plain.py -- train GA-plain/NPO-plain, không qua AU
+│   ├── methods/            # định nghĩa từng method (base/ga/npo/ga_plain/npo_plain)
+│   ├── eval/               # đánh giá dùng chung cho từng method
+│   ├── report/             # gộp eval_runs/* thành bảng kết quả cuối
+│   ├── templates/          # script support chay
+│   └── utils/              # chạy subprocess dùng chung cho mọi bước pipeline
 └── README.md
 ```
 
-## Prerequisites
+## Yêu cầu trước khi chạy
 
 - Python >= 3.10
-- CUDA GPU
+- GPU CUDA
 
-## Installation
+## Cài đặt
 
 ```bash
 git clone https://github.com/DuongXi/Seminar-2-LLM-Unlearning
 
 
 
-pip install -e .          # installs pkg_halluc + the dependencies pinned in pyproject.toml
+pip install -e .          # cài pkg_halluc + các dependency đã pin trong pyproject.toml
 ```
 
-After this, the `pkg_halluc` command is available.
+Sau bước này có lệnh `pkg_halluc`
 
-## Fetching the AU paper's code
+## Lấy code của paper AU
 
 ```bash
-# Option A: already have the AU zip locally
+# Cách A: đã có sẵn file zip AU trên máy 
 pkg_halluc fetch-deps --au-src /path/to/Adaptive-Unlearning-952E.zip
 
-# Option B: on Kaggle, with the repo attached as a Dataset via "Add Input" --
-# no --au-src needed, found automatically
+# Cách B: trên Kaggle, gắn repo AU làm Dataset qua "Add Input" --
+# không cần truyền --au-src, tự động tìm thấy
 pkg_halluc fetch-deps
 ```
 
-## Configuration
+## Cấu hình
 
-| File | What it's for |
+| File | Dùng để làm gì |
 | --- | --- |
-| `configs/default.json` | Qwen2.5-Coder-1.5B, realistic eval size (150 prompts) |
-| `configs/smoke_test.json` | small (25 eval prompts, every method's retain/forget data capped to 40 rows/split) -- for checking the environment (and code changes) work before a real run |
-| `configs/qwen2.5-coder-1.5b.json`, `configs/qwen2.5-coder-3b.json`, `configs/qwen2.5-1.5b.json` | Qwen 2.5 Coder presets (1.5B / 3B) |
-| `configs/llama3.2-1b.json`, `configs/llama3.2-3b.json` | Llama 3.2 presets (1B / 3B) |
-| `configs/deepseek-coder-1.3b.json` | DeepSeek Coder 1.3B preset |
+| `configs/default.json` | Qwen2.5-Coder-1.5B, quy mô đánh giá thực tế (150 prompt) |
+| `configs/smoke_test.json` | nhỏ (25 prompt đánh giá, dữ liệu retain/forget của mọi method giới hạn 40 dòng/split) dùng để kiểm tra môi trường (và code mới sửa) trước khi chạy thật |
+| `configs/qwen2.5-coder-1.5b.json`, `configs/qwen2.5-coder-3b.json`, `configs/qwen2.5-1.5b.json` | preset Qwen 2.5 Coder (1.5B / 3B) |
+| `configs/llama3.2-1b.json`, `configs/llama3.2-3b.json` | preset Llama 3.2 (1B / 3B) |
+| `configs/deepseek-coder-1.3b.json` | preset DeepSeek Coder 1.3B |
 
-The fields below are shown at their raw `DEFAULT_CONFIG` defaults (every
-preset above overrides `use_lora: true` and a lower `eval.batch_size` --
-4 to 8 depending on model size -- these are just the fallback values a
-config doesn't have to restate):
+Các field dưới đây lấy theo giá trị mặc định gốc trong `DEFAULT_CONFIG` (mọi
+preset ở trên đều override `use_lora: true` và `eval.batch_size` thấp hơn --
+4 đến 8 tùy size model -- đây chỉ là giá trị fallback khi config không ghi):
 
 ```jsonc
 {
-  "model_name": "qwen2.5-0.5b",      
+  "model_name": "qwen2.5-0.5b",      // tên preset (xem MODEL_PRESETS trong config.py) hoặc id HF đầy đủ
   "seed": 42,
-  "dtype": "auto",                    // "auto" | "bfloat16" | "float16" -- auto picks bf16 if the GPU supports it
+  "dtype": "auto",                    // "auto" | "bfloat16" | "float16" -- auto tự chọn bf16 nếu GPU hỗ trợ
   "data": {
-    "max_train_samples_per_split": null // set a small number for a fast smoke test
+    "max_train_samples_per_split": null // set null de chay full data, set số nhỏ để chạy thử nhanh
   },
   "eval": {
     "n_eval_prompts": 150,
-    "batch_size": 16,                 // try lower batch_size when hit OOM
+    "batch_size": 16,                 // gặp OOM lúc eval thì hạ số này
     "package_modes": [1, 2]          
   },
   "methods": {
@@ -101,36 +101,35 @@ config doesn't have to restate):
     "steering":    { "enabled": false } 
   },
   "deps": {
-    "adaptive_unlearning": { "source": null }   // set this, or use --au-src to fetch the AU code
+    "adaptive_unlearning": { "source": null }   // set chỗ này, hoặc dùng --au-src de lay code AU
   }
 }
 ```
 
-`use_lora: true` trains a LoRA adapter (via PEFT) instead of full
-fine-tuning: only the small adapter needs gradients/optimizer state, the
-base model stays frozen. Useful when a bigger model doesn't fit
-full fine-tuning in VRAM
+`use_lora: true` -- train LoRA adapter (qua PEFT) thay vì fine-tune toàn bộ
+trọng số: chỉ adapter nhỏ cần gradient/optimizer, base model đóng băng. Dùng
+khi model lớn không đủ VRAM để full fine-tune (vd T4 16GB trên
+Kaggle).
 
-## Usage
+## Cách chạy
 
-Every stage is its own subcommand so a run can be stopped and resumed
-partway through.
+Mỗi bước là 1 subcommand riêng để có thể dừng và chạy lại giữa chừng
 
 ```
-pkg_halluc fetch-deps            # fetch + patch the AU code
-pkg_halluc download-model        # download the base model, quick-check it can generate
-pkg_halluc build-data            # build the prompt + response data to train GA/NPO
-pkg_halluc train --method all    # train every method
-pkg_halluc evaluate --method all # evaluate hallucination rate (swap all for ga/npo/ga_plain/npo_plain to evaluate just one)
-pkg_halluc report                # aggregate eval_runs/* into the final tables + save CSVs
+pkg_halluc fetch-deps            # tải + vá code AU
+pkg_halluc download-model        # tải model gốc, kiểm tra nhanh việc sinh text
+pkg_halluc build-data            # dựng dữ liệu prompt + response để train GA/NPO
+pkg_halluc train --method all    # train all method (co the thay all = ga/npo/ga_plain/npo_plain neu muon train tung method)
+pkg_halluc evaluate --method all # eval hallucination (co the thay all = ga/npo/ga_plain/npo_plain neu muon eval tung method)
+pkg_halluc report                # gộp eval_runs/* thành bảng kết quả cuối + lưu CSV
 
-pkg_halluc run-all               # run every step above in order
+pkg_halluc run-all               # chạy hết các bước trên theo thứ tự
 ```
 
-Every subcommand accepts `--config`, `--work-dir`, `--model`, `--seed`; see
-`pkg_halluc <subcommand> --help` for more
+Mọi subcommand đều nhận `--config`, `--work-dir`, `--model`, `--seed`; xem
+`pkg_halluc <subcommand> --help` để biết thêm
 
-### Local
+### Chạy local
 
 ```bash
 pkg_halluc fetch-deps --config configs/smoke_test.json --au-src /path/to/Adaptive-Unlearning-952E.zip
