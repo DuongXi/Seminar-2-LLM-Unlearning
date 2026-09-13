@@ -70,7 +70,7 @@ pkg_halluc fetch-deps
 | File | Dùng để làm gì |
 | --- | --- |
 | `configs/default.json` | Qwen2.5-Coder-1.5B, quy mô đánh giá thực tế (150 prompt) |
-| `configs/smoke_test.json` | nhỏ (25 prompt đánh giá, dữ liệu retain/forget của mọi method giới hạn 40 dòng/split) dùng để kiểm tra môi trường (và code mới sửa) trước khi chạy thật |
+| `configs/smoke_test.json` | nhỏ (25 prompt đánh giá, dữ liệu retain/forget của mọi method giới hạn 40 dòng/split) dùng để kiểm tra môi trường|
 | `configs/qwen2.5-coder-1.5b.json`, `configs/qwen2.5-coder-3b.json`, `configs/qwen2.5-1.5b.json` | preset Qwen 2.5 Coder (1.5B / 3B) |
 | `configs/llama3.2-1b.json`, `configs/llama3.2-3b.json` | preset Llama 3.2 (1B / 3B) |
 | `configs/deepseek-coder-1.3b.json` | preset DeepSeek Coder 1.3B |
