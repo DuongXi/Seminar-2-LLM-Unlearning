@@ -1,10 +1,3 @@
-"""Shared plumbing for the two "weight_finetune" methods, GA and NPO.
-
-Both wrap the *same* upstream entrypoint, ``train.py``, with a different
-``--loss_function``. Both train on the fixed tri-mask dataset built once by
-`pkg_halluc data build-seed-data` (see data/seed_data.py) -- neither uses
-Adaptive Unlearning's adaptive prompt-mutation / discovery loop.
-"""
 from __future__ import annotations
 
 from pathlib import Path

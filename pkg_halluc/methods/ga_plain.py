@@ -1,7 +1,7 @@
-"""GA-plain -- Gradient Ascent, no tri-mask, no AU code.
+"""GA-plain -- Gradient Ascent, no tri-mask
 
 Same retain/forget rows as ga (methods/ga.py), but loss over each response
-in full instead of AU's per-token tri-mask. Ablation comparison against ga.
+in full instead of AU's per-token tri-mask. Ablation comparison against ga
 """
 from __future__ import annotations
 

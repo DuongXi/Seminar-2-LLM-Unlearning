@@ -1,11 +1,3 @@
-"""Shared plumbing for GA-plain and NPO-plain.
-
-Counterpart to _finetune_common.py: that one subprocesses into AU's
-vendored train.py. This one runs pkg_halluc/scripts/train_plain.py via
-`python -m` -- no AU code, no dependency on fetch-deps having run. Both
-read the same results CSVs (paths.main_hallu_result_paths) the tri-mask
-build uses, so the two families train on identical source rows.
-"""
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,7 +1,7 @@
-"""NPO-plain -- Negative Preference Optimization, no tri-mask, no AU code.
+"""NPO-plain -- Negative Preference Optimization, no tri-mask
 
 Same retain/forget rows as npo (methods/npo.py), but loss over each response
-in full instead of AU's per-token tri-mask. Ablation comparison against npo.
+in full instead of AU's per-token tri-mask. Ablation comparison against npo
 """
 from __future__ import annotations
 
