@@ -1,0 +1,13 @@
+# Core dependencies for tsv_main.py, llm_layers.py, and eval_variant_v2.py.
+# Everything else these three files use (argparse, json, csv, re, os, random,
+# ast, sys, time, urllib, typing, logging) is Python's standard library and
+# needs no install.
+
+torch
+transformers>=4.40
+scikit-learn
+numpy
+
+# Only needed if you also use train_utils.py (not called by anything in the
+# current pipeline - see earlier in this conversation for why):
+# tqdm
