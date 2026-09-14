@@ -69,22 +69,23 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "enabled": True, "lr": 1e-5, "num_train_epochs": 3,
             "lambda_retain": 1.0, "lambda_forget": 0.5,
             "use_lora": False, "lora_rank": 16,
+            "val_ratio": 0.1, "eval_steps": 25,
+            "early_stopping_patience": 3, "early_stopping_threshold": 0.0,
+            "disable_early_stopping": False,
         },
         "npo_plain": {
             "enabled": True, "lr": 1e-5, "num_train_epochs": 3,
             "lambda_retain": 1.0, "lambda_forget": 0.5,
             "use_lora": False, "lora_rank": 16,
+            "val_ratio": 0.1, "eval_steps": 25,
+            "early_stopping_patience": 3, "early_stopping_threshold": 0.0,
+            "disable_early_stopping": False,
         },
-        # Representation Steering has no upstream code yet (methods/steering.py
-        # is a placeholder) -- disabled so `--method all` skips it cleanly.
         "steering": {"enabled": False},
     },
     "tri-mask": True,
     "deps": {
         "adaptive_unlearning": {
-            # No default URL: AU's code is published anonymously for
-            # double-blind review. Point this at a local zip, an http(s)
-            # URL, or leave null and rely on a Kaggle Dataset / --au-src.
             "source": None,
         },
     },

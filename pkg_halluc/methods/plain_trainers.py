@@ -1,17 +1,9 @@
 """GA-plain / NPO-plain -- Gradient Ascent and NPO without AU's tri-mask.
 
-Independent of the AU repo. Compare against ga_trainer.py / npo_trainer.py
-(vendored, unmodified) which these ablate: AU decides retain/forget per
-token via a tri_mask built from package-name character positions; here it's
-decided per example (each example is already fully "retain" or "forget",
-via PackageUnlearningDataset's split_type), so the whole response is
-reinforced or ascended, no position-finding needed.
-
 Loss math mirrors AU's formulas (GA: negative mean CE on forget; NPO:
 softplus(beta * log p) + KL to a temperature-scaled self, reference-free)
 so only the retain/forget granularity differs, not the loss shape. No
-separate EOS term (AU's trainers give EOS its own weight) -- EOS is just a
-normal response token here.
+separate EOS term (AU's trainers give EOS its own weight)
 """
 from __future__ import annotations
 
@@ -100,7 +92,7 @@ class GAPlainTrainer(Trainer):
         loss = self.lambda_retain * L_retain + self.lambda_forget * L_forget
 
         step = int(self.state.global_step)
-        if step > 0 and (step % max(1, self.args.logging_steps) == 0):
+        if model.training and step > 0 and (step % max(1, self.args.logging_steps) == 0):
             self.log(
                 {
                     "loss_retain": float(L_retain.detach().cpu()),
@@ -199,7 +191,7 @@ class NPOPlainTrainer(Trainer):
         loss = self.lambda_retain * L_retain + self.lambda_forget * L_forget
 
         step = int(self.state.global_step)
-        if step > 0 and (step % max(1, self.args.logging_steps) == 0):
+        if model.training and step > 0 and (step % max(1, self.args.logging_steps) == 0):
             self.log(
                 {
                     "loss_retain": float(L_retain.detach().cpu()),

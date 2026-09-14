@@ -10,6 +10,27 @@
 | **NPO-plain** | fine-tune toàn bộ trọng số, cùng dữ liệu tĩnh, không tri-mask | code riêng |
 | **Representation Steering** | *chưa cài đặt* | |
 
+## Early stopping (`ga_plain` / `npo_plain`)
+
+**Cách hoạt động:** một phần (`val_ratio`) của tập **retain** được tách ra
+làm `eval_dataset`, Trainer eval định kỳ mỗi `eval_steps`, và
+`EarlyStoppingCallback` sẽ dừng train nếu `eval_loss` không cải thiện sau
+`early_stopping_patience` lần eval liên tiếp (`load_best_model_at_end=True`
+nên checkpoint cuối cùng luôn là checkpoint tốt nhất, không phải checkpoint
+tại bước dừng).
+
+**Vì sao chỉ tách từ tập retain, không tách từ forget:** loss tổng của
+GA/NPO-plain là `lambda_retain * L_retain + lambda_forget * L_forget`, trong
+đó `L_forget` là *âm* của cross-entropy trên forget-set (ascent target) ->
+không có đáy, càng train càng "cải thiện" vô hạn. Nếu early stop dựa trên
+loss tổng (gồm cả `L_forget`) thì tiêu chí này gần như không bao giờ
+plateau. `GAPlainTrainer`/`NPOPlainTrainer.compute_loss` (xem
+`pkg_halluc/methods/plain_trainers.py`) đã tự động cho `L_forget = 0` khi
+một batch không có dòng nào thuộc split `"forget"` nên chỉ cần trỏ
+`eval_dataset` vào một tập con **toàn retain**, `eval_loss` mà Trainer tự
+tính ra sẽ tự nhiên chỉ còn là `lambda_retain * L_retain`: một tín hiệu
+bounded, phản ánh đúng việc model có đang giữ được utility (retain) hay
+không, mà không cần sửa `compute_loss`.
 
 ## Cấu trúc thư mục
 

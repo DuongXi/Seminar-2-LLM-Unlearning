@@ -1,5 +1,5 @@
 {
-  "_comment": "Tiny config for a fast end-to-end sanity check (~few minutes on a T4). Matches the settings the reference notebook was validated with. Not meant for real results -- use default.json (or your own config) for that.",
+  "_comment": "Tiny config for a fast end-to-end sanity check (~few minutes on a T4). Matches the settings the reference notebook was validated with. Not meant for real results -- use default.json (or your own config) for that. ga_plain/npo_plain: num_train_epochs/val_ratio/eval_steps/early_stopping_patience below are sized so early stopping actually gets exercised on this tiny dataset (eval_steps small enough to fire several times before num_train_epochs would otherwise finish) instead of only running to completion.",
   "model_name": "qwen2.5-coder-3b",
   "seed": 42,
   "dtype": "auto",
@@ -35,20 +35,28 @@
     "ga_plain": {
       "enabled": true,
       "lr": 1e-05,
-      "num_train_epochs": 3,
+      "num_train_epochs": 6,
       "lambda_retain": 1.0,
       "lambda_forget": 0.5,
       "use_lora": true,
-      "lora_rank": 16
+      "lora_rank": 16,
+      "val_ratio": 0.2,
+      "eval_steps": 5,
+      "early_stopping_patience": 2,
+      "early_stopping_threshold": 0.0
     },
     "npo_plain": {
       "enabled": true,
       "lr": 1e-05,
-      "num_train_epochs": 3,
+      "num_train_epochs": 6,
       "lambda_retain": 1.0,
       "lambda_forget": 0.5,
       "use_lora": true,
-      "lora_rank": 16
+      "lora_rank": 16,
+      "val_ratio": 0.2,
+      "eval_steps": 5,
+      "early_stopping_patience": 2,
+      "early_stopping_threshold": 0.0
     },
     "steering": {
       "enabled": false

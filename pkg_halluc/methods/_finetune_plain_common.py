@@ -36,11 +36,17 @@ def train_plain_finetune(tag: str, loss_function: str, ctx: MethodContext) -> No
         "--max_length", str(max_length),
         "--result_files", *[str(p) for p in result_paths],
         "--out_dir", str(out_dir),
+        "--val_ratio", str(m.get("val_ratio", 0.1)),
+        "--eval_steps", str(m.get("eval_steps", 25)),
+        "--early_stopping_patience", str(m.get("early_stopping_patience", 3)),
+        "--early_stopping_threshold", str(m.get("early_stopping_threshold", 0.0)),
     ]
     if max_samples is not None:
         cmd += ["--max_samples_per_split", str(max_samples)]
     if m.get("use_lora", False):
         cmd += ["--use_lora", "--lora_rank", str(m.get("lora_rank", 16))]
+    if m.get("disable_early_stopping", False):
+        cmd += ["--disable_early_stopping"]
 
     python_run(
         cmd,

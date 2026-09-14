@@ -1,14 +1,15 @@
-"""Train GA-plain / NPO-plain -- no tri-mask, no Adaptive Unlearning code.
+"""Train GA-plain / NPO-plain -- no tri-mask
 
-Counterpart to methods/ga.py and methods/npo.py (which subprocess into AU's
-vendored train.py). This script is entirely this project's own code: loads
-the base model via pkg_halluc.model_setup.build_model, and builds retain/
-forget sets via PackageUnlearningDataset with return_format="pointwise"
-(masks only the prompt, keeps every response token as a label -- no
-per-token tri-mask).
-
-Invoked via `python -m pkg_halluc.scripts.train_plain` (see
-methods/_finetune_plain_common.py); not meant to be run by hand.
+Early stopping: a --val_ratio slice of the *retain* set only is held out
+as eval_dataset (the forget set is never held out). GAPlainTrainer /
+NPOPlainTrainer's compute_loss (methods/plain_trainers.py) already
+zeroes out the forget term whenever a batch has no "forget"-split rows,
+so evaluating on a retain-only split makes Trainer's built-in eval_loss
+equal to lambda_retain * L_retain -- a bounded signal for whether the
+model's general (retain) behavior is degrading. deliberate: the
+forget-side term is a *negative* CE (an ascent target), so it keeps
+"improving" without bound and would make early stopping on the combined
+loss meaningless -- it would never trigger a plateau
 """
 from __future__ import annotations
 
@@ -18,8 +19,8 @@ import random
 from pathlib import Path
 
 import torch
-from torch.utils.data import ConcatDataset
-from transformers import TrainingArguments
+from torch.utils.data import ConcatDataset, random_split
+from transformers import EarlyStoppingCallback, TrainingArguments
 
 from pkg_halluc.methods.plain_trainers import GAPlainTrainer, NPOPlainTrainer
 from pkg_halluc.model_setup import build_model
@@ -71,6 +72,21 @@ def parse_args() -> argparse.Namespace:
     )
     ap.add_argument("--result_files", nargs="+", required=True, help="Same results CSVs the tri-mask build uses")
     ap.add_argument("--out_dir", required=True)
+    ap.add_argument(
+        "--val_ratio", type=float, default=0.1,
+        help="Fraction of the retain set held out as an eval split for early stopping "
+        "(the forget set is never held out -- see module docstring below)",
+    )
+    ap.add_argument("--eval_steps", type=int, default=25, help="Evaluate (and save) every N optimizer steps")
+    ap.add_argument("--early_stopping_patience", type=int, default=3, help="Stop after this many evals with no improvement")
+    ap.add_argument(
+        "--early_stopping_threshold", type=float, default=0.0,
+        help="Minimum eval_loss decrease to count as an improvement",
+    )
+    ap.add_argument(
+        "--disable_early_stopping", action="store_true",
+        help="Train for the full num_train_epochs with no held-out eval split (old behavior)",
+    )
     return ap.parse_args()
 
 
@@ -117,12 +133,41 @@ def main() -> None:
 
     print(f"PackageUnlearningDataset (plain): retain={len(retain_ds)} forget={len(forget_ds)}")
 
-    train_dataset = ConcatDataset([retain_ds, forget_ds])
+    # Carve a held-out slice off the retain set for early stopping (see
+    # module docstring for why retain-only, not forget). Falls back to
+    # training the full retain set with early stopping off if the retain
+    # set is too small to split meaningfully
+    early_stopping_enabled = not args.disable_early_stopping
+    retain_val_ds = None
+    retain_train_ds = retain_ds
+    if early_stopping_enabled:
+        n_val = max(1, round(len(retain_ds) * args.val_ratio))
+        if len(retain_ds) - n_val < 1:
+            print(
+                f"[train_plain] retain set too small ({len(retain_ds)} rows) to hold out "
+                f"a val split at val_ratio={args.val_ratio} -- disabling early stopping."
+            )
+            early_stopping_enabled = False
+        else:
+            retain_train_ds, retain_val_ds = random_split(
+                retain_ds,
+                [len(retain_ds) - n_val, n_val],
+                generator=torch.Generator().manual_seed(args.seed),
+            )
+            print(
+                f"Early stopping on: retain_train={len(retain_train_ds)} "
+                f"retain_val={len(retain_val_ds)} (val_ratio={args.val_ratio}), "
+                f"eval_steps={args.eval_steps}, patience={args.early_stopping_patience}, "
+                f"threshold={args.early_stopping_threshold}"
+            )
+
+    train_dataset = ConcatDataset([retain_train_ds, forget_ds])
     collator = DataCollatorForUnlearning(tok)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    eval_save_steps = args.eval_steps if early_stopping_enabled else 25
     training_args = TrainingArguments(
         output_dir=str(out_dir),
         num_train_epochs=args.num_train_epochs,
@@ -132,11 +177,17 @@ def main() -> None:
         logging_strategy="steps",
         logging_dir=str(out_dir / "logs"),
         logging_steps=5,
-        eval_strategy="no",
+        eval_strategy=("steps" if early_stopping_enabled else "no"),
+        eval_steps=(eval_save_steps if early_stopping_enabled else None),
         save_strategy="steps",
-        save_steps=25,
-        save_total_limit=2,
+        save_steps=eval_save_steps,
+        save_total_limit=(3 if early_stopping_enabled else 2),
+        load_best_model_at_end=early_stopping_enabled,
+        metric_for_best_model=("eval_loss" if early_stopping_enabled else None),
+        greater_is_better=(False if early_stopping_enabled else None),
         per_device_train_batch_size=1,
+        per_device_eval_batch_size=1,
+        prediction_loss_only=True,
         gradient_accumulation_steps=16,
         gradient_checkpointing=True,
         bf16=(args.dtype == "bfloat16"),
@@ -154,11 +205,19 @@ def main() -> None:
         model=model,
         args=training_args,
         train_dataset=train_dataset,
+        eval_dataset=(retain_val_ds if early_stopping_enabled else None),
         tokenizer=tok,
         data_collator=collator,
         lambda_retain=args.lambda_retain,
         lambda_forget=args.lambda_forget,
         vocab_size=vocab_size,
+        callbacks=(
+            [EarlyStoppingCallback(
+                early_stopping_patience=args.early_stopping_patience,
+                early_stopping_threshold=args.early_stopping_threshold,
+            )]
+            if early_stopping_enabled else []
+        ),
     )
 
     print(f"Training {args.loss_function} (plain, no tri-mask)...")
@@ -188,6 +247,16 @@ def main() -> None:
         "retain_samples": len(retain_ds),
         "forget_samples": len(forget_ds),
         "result_files": list(args.result_files),
+        "early_stopping_enabled": early_stopping_enabled,
+        "retain_train_samples": len(retain_train_ds),
+        "retain_val_samples": (len(retain_val_ds) if early_stopping_enabled else 0),
+        "val_ratio": (args.val_ratio if early_stopping_enabled else None),
+        "eval_steps": (eval_save_steps if early_stopping_enabled else None),
+        "early_stopping_patience": (args.early_stopping_patience if early_stopping_enabled else None),
+        "early_stopping_threshold": (args.early_stopping_threshold if early_stopping_enabled else None),
+        "best_eval_loss": (trainer.state.best_metric if early_stopping_enabled else None),
+        "best_checkpoint": (trainer.state.best_model_checkpoint if early_stopping_enabled else None),
+        "total_steps_run": trainer.state.global_step,
     }
     with open(out_dir / "training_info.json", "w", encoding="utf-8") as f:
         json.dump(training_info, f, indent=2)
