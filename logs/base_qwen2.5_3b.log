@@ -1,0 +1,9 @@
+/content/models/Qwen/Qwen2.5-Coder-3B-Instruct
+Loading weights: 100% 434/434 [02:07<00:00,  3.42it/s]
+100% 414/414 [02:32<00:00,  2.71batch/s]
+Forget dataset PPL: 30.921875
+Forget dataset Acc: 44.16900634765625
+scanning:   0% 0/414 [00:00<?, ?it/s]/content/classical.py:119: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  k: torch.tensor(v).unsqueeze(0).to(model.device)
+scanning: 100% 414/414 [02:28<00:00,  2.78it/s]
+/content/data/Qwen_3B/tri_mask/npo_forget_tok_qwen_3B.jsonl forget  NLL=0.9906  PPL=2.6928  ACC=80.2903%
