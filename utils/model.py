@@ -42,8 +42,12 @@ def load_model(model_path:str=None,
             )
             model = base
             tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
-    
-    tokenizer.padding_side = padding_side
+    if tokenizer is not None:
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            tokenizer.pad_token_id = tokenizer.eos_token_id
+            model.config.pad_token_id = tokenizer.eos_token_id
+        tokenizer.padding_side = padding_side
     return tokenizer, model
 
 
