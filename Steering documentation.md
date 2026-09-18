@@ -26,8 +26,8 @@ Hệ thống gồm 2 giai đoạn tách biệt, 3 file Python chính:
 
 ```
                     ┌─────────────────────────┐
-                    │  _results.csv  │  (Prompts, Answers, pip_valid,
-                    │   (dữ liệu có sẵn)      │   pip_hallucinated, ...)
+                    │  _results.csv           │  (Prompts, Answers, pip_valid, pip_hallucinated, ...)
+                    │   (dữ liệu có sẵn)      │   
                     └────────────┬────────────┘
                                  │
                                  ▼
@@ -48,8 +48,8 @@ Hệ thống gồm 2 giai đoạn tách biệt, 3 file Python chính:
                     └────────────┬────────────┘
                                  │
                                  ▼
-                    eval_runs/<tag>/LLM_<tag>_results.csv   (cùng schema, để so sánh)
-                    eval_runs/<tag>/LLM_<tag>_summary.json  (PHR/RHR/unique_hallucinated)
+                    eval_runs/<tag>/<tag>_results.csv   (cùng schema, để so sánh)
+                    
 ```
 
 ---
