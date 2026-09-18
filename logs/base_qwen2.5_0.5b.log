@@ -1,0 +1,11 @@
+
+GITHUB
+models/Qwen_0.5
+Loading weights: 100% 290/290 [00:00<00:00, 346.55it/s]
+MIA: 100% 2000/2000 [01:57<00:00, 17.09batch/s]
+MIA: 100% 15815/15815 [16:36<00:00, 15.88batch/s]
+MIA Attack AUC (min_30_value): 0.444465
+MIA Attack AUC (min_40_value): 0.470513
+MIA Attack AUC (min_50_value): 0.488727
+MIA Attack AUC (min_60_value): 0.500192
+MIA Attack AUC (min_100_value): 0.516417

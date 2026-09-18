@@ -1,0 +1,22 @@
+/content/models/meta-llama/Llama-3.2-3B-Instruct
+Loading weights: 100% 254/254 [02:10<00:00,  1.95it/s]
+100% 484/484 [01:01<00:00,  7.87batch/s]
+Forget dataset PPL: 33.125
+Forget dataset Acc: 49.52761459350586
+scanning:   0% 0/484 [00:00<?, ?it/s]/content/classical.py:119: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  k: torch.tensor(v).unsqueeze(0).to(model.device)
+scanning: 100% 484/484 [01:06<00:00,  7.25it/s]
+/content/data/Llama3_3B/tri_mask/npo_forget_tok_llama_3B.jsonl forget  NLL=2.5159  PPL=12.3773  ACC=60.2052%
+
+GITHUB
+/content/models/meta-llama/Llama-3.2-3B-Instruct
+Loading weights: 100% 254/254 [00:26<00:00,  9.76it/s]
+MIA: 100% 2000/2000 [08:05<00:00,  4.12batch/s]
+MIA: 100% 15815/15815 [1:06:26<00:00,  3.97batch/s]
+MIA Attack AUC (min_30_value): 0.459512
+MIA Attack AUC (min_40_value): 0.485893
+MIA Attack AUC (min_50_value): 0.501994
+MIA Attack AUC (min_60_value): 0.512152
+MIA Attack AUC (min_100_value): 0.531174
+
+ARXIV

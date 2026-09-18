@@ -21,6 +21,7 @@ import sys
 import subprocess
 import shutil
 import re
+import os
 
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -412,7 +413,10 @@ def run_benchmark(
     print(f"Benchmarks : {benchmarks}")
     print(f"{'='*60}")
 
-    tokenizer, model = load_model(model_path, padding_side=tok_pad_side)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tokenizer, model = load_model(model_path=model_path,
+                                  device_map=device,
+                                  padding_side=tok_pad_side)
 
     all_scores = {}
 
@@ -444,6 +448,7 @@ def run_benchmark(
 
         # Save solutions in evalplus jsonl format
         solutions_file = results_dir / f"{model_name}_{benchmark}_samples.jsonl"
+        os.makedirs(os.path.dirname(solutions_file), exist_ok=True)
         with open(solutions_file, "w") as f:
             for task_id, completions in solutions.items():
                 for completion in completions:
@@ -461,6 +466,7 @@ def run_benchmark(
 
     # Write a combined summary JSON next to the checkpoint
     summary_path = results_dir.parent / f"{model_name}_evalplus_summary.json"
+    os.makedirs(os.path.dirname(summary_path), exist_ok=True)
     with open(summary_path, "w") as f:
         json.dump({"model": model_name, "checkpoint": str(ckpt), "scores": all_scores}, f, indent=2)
     print(f"\nSummary saved to {summary_path}")
