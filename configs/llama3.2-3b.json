@@ -22,14 +22,22 @@
       "lr": 1e-05,
       "num_train_epochs": 3,
       "use_lora": true,
-      "lora_rank": 16
+      "lora_rank": 16,
+      "val_ratio": 0.1,
+      "eval_steps": 25,
+      "early_stopping_patience": 3,
+      "early_stopping_threshold": 0.0
     },
     "npo": {
       "enabled": true,
       "lr": 1e-05,
       "num_train_epochs": 3,
       "use_lora": true,
-      "lora_rank": 16
+      "lora_rank": 16,
+      "val_ratio": 0.1,
+      "eval_steps": 25,
+      "early_stopping_patience": 3,
+      "early_stopping_threshold": 0.0
     },
     "ga_plain": {
       "enabled": true,

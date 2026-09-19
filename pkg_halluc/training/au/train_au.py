@@ -5,11 +5,13 @@ import wandb
 import argparse
 import torch
 import datetime
+import glob
+import shutil
 
-from datasets import Dataset
+from datasets import Dataset, concatenate_datasets
 from typing import Tuple
 
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+from transformers import AutoModelForCausalLM, AutoTokenizer, EarlyStoppingCallback, TrainingArguments
 
 from pkg_halluc.common.au_utils import (
     load_toklevel_files,
@@ -139,8 +141,32 @@ def main():
 
     print("Đang load dataset theo token...")
 
-    full_ds = load_toklevel_files(args.forget_file, args.retain_file)
-    split = full_ds.train_test_split(test_size=0.1, seed=42, shuffle=True)
+    # early stopping
+    early_stopping_enabled = not args.disable_early_stopping
+    retain_train_ds = None
+    retain_val_ds = None
+    if early_stopping_enabled:
+        retain_ds = load_toklevel_files(None, args.retain_file)
+        forget_ds = load_toklevel_files(args.forget_file, None)
+        n_val = max(1, round(len(retain_ds) * args.val_ratio))
+        if len(retain_ds) - n_val < 1:
+            print(
+                f"[train_au] tập retain quá nhỏ ({len(retain_ds)} dòng) để tách val split "
+                f"với val_ratio={args.val_ratio} -- tắt early stopping."
+            )
+            early_stopping_enabled = False
+        else:
+            retain_split = retain_ds.train_test_split(test_size=n_val, seed=42, shuffle=True)
+            retain_train_ds, retain_val_ds = retain_split["train"], retain_split["test"]
+            train_ds = concatenate_datasets([retain_train_ds, forget_ds])
+            print(
+                f"Early stopping trên: retain_train={len(retain_train_ds)} "
+                f"retain_val={len(retain_val_ds)} forget={len(forget_ds)} (val_ratio={args.val_ratio}), "
+                f"eval_steps={args.eval_steps}, patience={args.early_stopping_patience}, "
+                f"threshold={args.early_stopping_threshold}"
+            )
+    if not early_stopping_enabled:
+        train_ds = load_toklevel_files(args.forget_file, args.retain_file)
 
     collator = TokLevelCollator(
         pad_token_id=tokenizer.pad_token_id, label_pad_id=-100
@@ -155,8 +181,8 @@ def main():
             n2 += ex["tri_mask"].count(2)
         return n0, n1, n2
 
-    n0_tr, n1_tr, n2_tr = count_tri_mask_tokens(split["train"])
-    n0_ev, n1_ev, n2_ev = count_tri_mask_tokens(split["test"])
+    n0_tr, n1_tr, n2_tr = count_tri_mask_tokens(train_ds)
+    n0_ev, n1_ev, n2_ev = count_tri_mask_tokens(retain_val_ds) if early_stopping_enabled else (0, 0, 0)
     print(f"Token train – ignore:{n0_tr} retain:{n1_tr} forget:{n2_tr}")
     print(f" Token eval – ignore:{n0_ev} retain:{n1_ev} forget:{n2_ev}")
 
@@ -165,6 +191,7 @@ def main():
     if args.use_wandb:
         report_to.append("wandb")
 
+    eval_save_steps = args.eval_steps if early_stopping_enabled else 25
     training_args = TrainingArguments(
         output_dir=args.output_dir,
         num_train_epochs=args.num_train_epochs,
@@ -174,10 +201,16 @@ def main():
         logging_strategy="steps",
         logging_dir=os.path.join(args.output_dir, "logs"),
         logging_steps=5,
-        eval_strategy="no",
-        save_strategy="no",
-        save_steps=25,
+        eval_strategy=("steps" if early_stopping_enabled else "no"),
+        eval_steps=(eval_save_steps if early_stopping_enabled else None),
+        save_strategy=("steps" if early_stopping_enabled else "no"),
+        save_steps=eval_save_steps,
         save_total_limit=2,
+        load_best_model_at_end=early_stopping_enabled,
+        metric_for_best_model=("eval_loss" if early_stopping_enabled else None),
+        greater_is_better=(False if early_stopping_enabled else None),
+        save_only_model=early_stopping_enabled,
+        prediction_loss_only=True,
         per_device_train_batch_size=1,  
         per_device_eval_batch_size=1,
         gradient_accumulation_steps=16,
@@ -195,8 +228,8 @@ def main():
     trainer_kwargs = dict(
         model=model,
         args=training_args,
-        train_dataset=split["train"],
-        eval_dataset=split["test"],
+        train_dataset=train_ds,
+        eval_dataset=retain_val_ds,
         tokenizer=tokenizer,
         data_collator=collator,
         lambda_retain=lambda_retain,
@@ -204,6 +237,13 @@ def main():
         lambda_eos=args.lambda_eos, 
         vocab_size=vocab_size,
         beta=beta,
+        callbacks=(
+            [EarlyStoppingCallback(
+                early_stopping_patience=args.early_stopping_patience,
+                early_stopping_threshold=args.early_stopping_threshold,
+            )]
+            if early_stopping_enabled else []
+        ),
     )
 
     trainer = trainer_class(**trainer_kwargs)
@@ -220,6 +260,10 @@ def main():
         trainer.save_model(args.output_dir)
         tokenizer.save_pretrained(args.output_dir)
 
+    if early_stopping_enabled:
+        for ckpt_dir in glob.glob(os.path.join(glob.escape(args.output_dir), "checkpoint-*")):
+            shutil.rmtree(ckpt_dir, ignore_errors=True)
+
     training_info = {
         "beta": beta,
         "lambda_retain": lambda_retain,
@@ -232,6 +276,16 @@ def main():
         "temperature": temperature,
         "alpha": alpha,
         "gamma": gamma,
+        "early_stopping_enabled": early_stopping_enabled,
+        "retain_train_samples": (len(retain_train_ds) if early_stopping_enabled else None),
+        "retain_val_samples": (len(retain_val_ds) if early_stopping_enabled else 0),
+        "val_ratio": (args.val_ratio if early_stopping_enabled else None),
+        "eval_steps": (eval_save_steps if early_stopping_enabled else None),
+        "early_stopping_patience": (args.early_stopping_patience if early_stopping_enabled else None),
+        "early_stopping_threshold": (args.early_stopping_threshold if early_stopping_enabled else None),
+        "best_eval_loss": (trainer.state.best_metric if early_stopping_enabled else None),
+        "best_checkpoint": (trainer.state.best_model_checkpoint if early_stopping_enabled else None),
+        "total_steps_run": trainer.state.global_step,
     }
 
     with open(
@@ -273,6 +327,20 @@ def parse_arguments():
     parser.add_argument("--seed", type=int, default=None, help="Seed để tái lập kết quả")
     parser.add_argument("--use_lora", action="store_true", help="Train bằng LoRA thay vì fine-tune toàn bộ trọng số")
     parser.add_argument("--lora_rank", type=int, default=16, help="LoRA rank (r)")
+    parser.add_argument(
+        "--val_ratio", type=float, default=0.1,
+        help="Tỉ lệ tách từ tập retain làm eval split cho early stopping",
+    )
+    parser.add_argument("--eval_steps", type=int, default=25, help="Eval (và save) mỗi N optimizer step")
+    parser.add_argument("--early_stopping_patience", type=int, default=3, help="Dừng sau bấy nhiêu lần eval không cải thiện")
+    parser.add_argument(
+        "--early_stopping_threshold", type=float, default=0.0,
+        help="Mức giảm eval_loss tối thiểu để tính là có cải thiện",
+    )
+    parser.add_argument(
+        "--disable_early_stopping", action="store_true",
+        help="Train đủ num_train_epochs trên toàn bộ dữ liệu",
+    )
 
     return parser.parse_args()
 

@@ -1,4 +1,4 @@
-from .config import (
+from .prompt_config import (
     CHAT_TEMPLATES,
     MODEL_CONFIGS,
     PACKAGE_PREFIX_1,

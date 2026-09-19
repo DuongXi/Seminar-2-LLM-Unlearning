@@ -1,10 +1,9 @@
-"""Tiện ích lấy từ AU: prefix prompt, đọc dữ liệu tri-mask, collator, LoRA, load model."""
-# AU: file lấy từ paper Adaptive Unlearning (đã trim/sửa nhẹ)
+# AU
 import os
 import json
 import random
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from datasets import Dataset
 import torch
@@ -58,10 +57,12 @@ def read_jsonl(path: str) -> List[Dict]:
     return items
 
 
-def load_toklevel_files(forget_tok_path: str, retain_tok_path: str) -> Dataset:
+def load_toklevel_files(forget_tok_path: Optional[str], retain_tok_path: Optional[str]) -> Dataset:
     """Đọc 2 file JSONL tri-mask (forget, retain) thành 1 Dataset dùng để train."""
     data = []
     for p in [forget_tok_path, retain_tok_path]:
+        if p is None: 
+            continue
         for ex in read_jsonl(p):
             # Chỉ giữ các field cần cho việc train
             item = {

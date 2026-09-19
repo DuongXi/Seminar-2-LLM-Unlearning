@@ -24,7 +24,7 @@
 
 | File | Vai trò  
 | --- | ---  | 
-| `au/train_au.py` | Train GA/NPO tri-mask trên dữ liệu tĩnh  
+| `au/train_au.py` | Train GA/NPO tri-mask trên dữ liệu tĩnh, có early stopping (val tách từ retain)  
 | `au/ga_trainer.py` | `GradientAscentTrainer`  
 | `au/npo_trainer.py` | `NPOTrainer`  
 | `plain/train_plain.py` | Train GA-plain/NPO-plain

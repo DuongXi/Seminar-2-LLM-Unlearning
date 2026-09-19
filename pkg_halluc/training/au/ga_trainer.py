@@ -98,7 +98,8 @@ class GradientAscentTrainer(Trainer):
         )
 
         step = int(self.state.global_step)
-        if step > 0 and (step % max(1, self.args.logging_steps) == 0):
+        # early stopping
+        if model.training and step > 0 and (step % max(1, self.args.logging_steps) == 0):
             logs = {
                 "loss_retain": float(L_retain.detach().cpu()),
                 "loss_forget": float(L_forget.detach().cpu()),
