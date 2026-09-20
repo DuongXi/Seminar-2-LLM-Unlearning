@@ -138,6 +138,8 @@ bash scripts/train_ga.sh \
 
 Co thể thêm `--use-lora --lora-rank 16` để train LoRA, `--disable-early-stopping` để tắt early stopping
 
+#### KQ sau khi train sẽ lưu ở kaggle/working/pkg-halluc/checkpoints, train xong thì zip checkpoint lại và tải về
+
 
 ## Cách chạy pipeline
 

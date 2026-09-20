@@ -25,3 +25,4 @@ venv/
 # local
 *.local.json
 .env
+hf_token.txt

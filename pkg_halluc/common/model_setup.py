@@ -1,15 +1,30 @@
 """Tải base model, build model + tokenizer và sinh thử để kiểm tra môi trường."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 from pkg_halluc.common.model_presets import MODEL_PRESETS
 
 
+def apply_hf_token() -> None:
+    if os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN"):
+        return
+    repo_root = Path(__file__).resolve().parents[2]
+    for token_file in (Path.cwd() / "hf_token.txt", repo_root / "hf_token.txt"):
+        if token_file.is_file():
+            token = token_file.read_text(encoding="utf-8-sig").strip()
+            if token:
+                os.environ["HF_TOKEN"] = token
+                return
+
+
 def download_base_model(model_name: str, models_dir: Path) -> Path:
     """Tải model từ Hugging Face vào models_dir/<id đầy đủ>, đã có thì bỏ qua."""
     from huggingface_hub import snapshot_download
+
+    apply_hf_token()
 
     repo_id = MODEL_PRESETS.get(model_name, model_name)
 
@@ -35,6 +50,8 @@ def build_model(
     from transformers import AutoModelForCausalLM
 
     from pkg_halluc.package_loader.utils import setup_tokenizer
+
+    apply_hf_token()
 
     raw_identifier = str(model_name_or_path)
     resolved_id = MODEL_PRESETS.get(raw_identifier, raw_identifier)
