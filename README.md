@@ -76,10 +76,13 @@ bash scripts/train_ga.sh --config configs/default.json --lr 2e-5
 
 ## Hướng dẫn chạy train
 ### 0. Xem hướng dẫn chi tiết
+
+```bash
 bash scripts/train_ga.sh --help
 bash scripts/train_ga_plain.sh --help
 bash scripts/train_npo.sh --help
 bash scripts/train_npo_plain.sh --help
+```
 
 ### 1. Lệnh cơ bản
 
