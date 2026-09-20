@@ -74,7 +74,69 @@ bash scripts/train_ga.sh --config configs/default.json --lr 2e-5
 | `configs/deepseek-coder-1.3b.json` | preset DeepSeek Coder 1.3B |
 
 
-## Cách chạy
+## Hướng dẫn chạy train
+### 0. Xem hướng dẫn chi tiết
+bash scripts/train_ga.sh --help
+bash scripts/train_ga_plain.sh --help
+bash scripts/train_npo.sh --help
+bash scripts/train_npo_plain.sh --help
+
+### 1. Lệnh cơ bản
+
+```bash
+bash scripts/train_ga.sh --model deepseek-coder-1.3b
+```
+
+Script tự đổi tên preset thành id Hugging Face, kiểm tra base model trong `models/`, train xong thi ghi kết quả vào `checkpoints/`
+
+`--model` nhận tên preset (ví dụ `qwen-0.5b`, `qwen-1.5b`, `qwen-3b`, `llama3.2-1b`, `deepseek-coder-1.3b`) hoặc id Hugging Face đầy đủ. Tên không nằm trong bảng preset (ví dụ chỉ gõ `qwen`) sẽ báo không tìm thấy model. Bỏ `--model` thì dùng `Qwen/Qwen2.5-Coder-0.5B-Instruct`.
+
+### 2. Giá trị mặc định khi chỉ truyền `--model`
+
+Không có `--config` thì không đọc file JSON nào, toàn bộ tham số lấy từ giá trị mặc định:
+
+| Tham số | Mặc định | Ý nghĩa |
+| --- | --- | --- |
+| `--lr` | `1e-5` | Learning rate |
+| `--epochs` | `3` | Số epoch|
+| `--seed` | `42` | Seed|
+| `--dtype` | `auto` | Kiểu số của trọng số: bfloat16 |
+| `--use-lora` | tắt | Mặc định là **full fine-tune** (train toàn bộ trọng số) |
+| Early stopping | bật | |
+| Batch | 1 × 16 | Mỗi step gom 16 mẫu (batch 1, gradient accumulation 16) |
+
+### 3. Chạy bằng file config
+
+```bash
+bash scripts/train_ga.sh --config configs/deepseek-coder-1.3b.json
+bash scripts/train_ga.sh --config configs/deepseek-coder-1.3b.json --epochs 5   # flag thêm sẽ ghi đè giá trị trong file json
+```
+
+Lưu ý: các file `configs/*.json` dang bật sẵn LoRA (`use_lora: true`), vì nếu dùng kaggle free, dung lượng của output sẽ vuợt quá mức kaggle cho phép, gây lỗi out of memory, còn khi không có `--config` mặc định là full fine-tune
+
+### 4. Lệnh full, không phụ thuộc file JSON
+
+Qua script, ghi rõ mọi flag (giá trị dưới đây bằng đúng mặc định):
+```bash
+bash scripts/train_ga.sh \
+  --model deepseek-coder-1.3b \
+  --model-path models/deepseek-ai/deepseek-coder-1.3b-instruct \
+  --save-tag ga \
+  --out-dir checkpoints/deepseek-coder-1.3b-instruct_ga \
+  --lr 1e-5 \
+  --epochs 3 \
+  --seed 42 \
+  --dtype auto \
+  --val-ratio 0.1 \
+  --eval-steps 25 \
+  --early-stopping-patience 3 \
+  --early-stopping-threshold 0.0
+```
+
+Co thể thêm `--use-lora --lora-rank 16` để train LoRA, `--disable-early-stopping` để tắt early stopping
+
+
+## Cách chạy pipeline
 
 ```bash
 bash scripts/download_model.sh --model Qwen/Qwen2.5-Coder-0.5B-Instruct   # tải model gốc, sanity-check
