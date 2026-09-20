@@ -48,6 +48,7 @@ def load_model(model_path:str=None,
             tokenizer.pad_token_id = tokenizer.eos_token_id
             model.config.pad_token_id = tokenizer.eos_token_id
         tokenizer.padding_side = padding_side
+        if padding_side == "left": tokenizer.clean_up_tokenization_spaces = False
     return tokenizer, model
 
 
