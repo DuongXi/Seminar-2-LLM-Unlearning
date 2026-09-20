@@ -7,3 +7,8 @@ scanning:   0% 0/490 [00:00<?, ?it/s]/content/classical.py:119: UserWarning: To 
   k: torch.tensor(v).unsqueeze(0).to(model.device)
 scanning: 100% 490/490 [00:32<00:00, 14.92it/s]
 /content/data/DeepSeek_1B/tri_mask/npo_forget_tok_deepseek_1B.jsonl forget  NLL=1.6237  PPL=5.0717  ACC=67.9991%
+
+
+GITHUB
+
+ARXIV
