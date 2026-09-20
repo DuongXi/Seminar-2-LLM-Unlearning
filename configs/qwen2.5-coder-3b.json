@@ -46,7 +46,9 @@
       "lambda_retain": 1.0,
       "lambda_forget": 0.5,
       "use_lora": true,
-      "lora_rank": 16
+      "lora_rank": 16,
+      "early_stopping_patience": 3,
+      "early_stopping_threshold": 0.0
     },
     "npo_plain": {
       "enabled": true,
@@ -55,7 +57,9 @@
       "lambda_retain": 1.0,
       "lambda_forget": 0.5,
       "use_lora": true,
-      "lora_rank": 16
+      "lora_rank": 16,
+      "early_stopping_patience": 3,
+      "early_stopping_threshold": 0.0
     }
   }
 }
