@@ -26,7 +26,7 @@
       "lora_rank": 16,
       "val_ratio": 0.1,
       "eval_steps": 25,
-      "early_stopping_patience": 3,
+      "early_stopping_patience": 10,
       "early_stopping_threshold": 0.0
     },
     "npo": {
@@ -37,7 +37,7 @@
       "lora_rank": 16,
       "val_ratio": 0.1,
       "eval_steps": 25,
-      "early_stopping_patience": 3,
+      "early_stopping_patience": 10,
       "early_stopping_threshold": 0.0
     },
     "ga_plain": {
@@ -48,7 +48,7 @@
       "lambda_forget": 0.5,
       "use_lora": true,
       "lora_rank": 16,
-      "early_stopping_patience": 3,
+      "early_stopping_patience": 10,
       "early_stopping_threshold": 0.0
     },
     "npo_plain": {
@@ -59,7 +59,7 @@
       "lambda_forget": 0.5,
       "use_lora": true,
       "lora_rank": 16,
-      "early_stopping_patience": 3,
+      "early_stopping_patience": 10,
       "early_stopping_threshold": 0.0
     }
   }
