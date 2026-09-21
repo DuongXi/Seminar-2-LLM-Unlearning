@@ -1,0 +1,28 @@
+.workdir/
+outputs/
+eval_runs/
+models/
+checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# editor
+.vscode/
+.idea/
+.DS_Store
+
+# local
+*.local.json
+.env
+hf_token.txt

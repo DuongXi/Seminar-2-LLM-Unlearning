@@ -47,10 +47,9 @@ class GradientAscentTrainer(Trainer):
         if self.vocab_size is not None:
             bad = (labels != -100) & ((labels < 0) | (labels >= self.vocab_size))
             if bad.any():
-                # Lấy 1 id lỗi để báo cụ thể
                 offending = labels[bad][0].item()
                 raise RuntimeError(
-                    f"Label id {offending} vượt ngoài phạm vi vocab_size={self.vocab_size} "
+                    f"Label id {offending} out of vocab_size={self.vocab_size} range"
                 )
 
         V = logits.size(-1)
@@ -99,12 +98,22 @@ class GradientAscentTrainer(Trainer):
 
         step = int(self.state.global_step)
         # early stopping
-        if model.training and step > 0 and (step % max(1, self.args.logging_steps) == 0):
+        if (
+            model.training
+            and step > 0
+            and (step % max(1, self.args.logging_steps) == 0)
+            and getattr(self, "_last_logged_step", -1) != step
+        ):
+            self._last_logged_step = step
+            ret = float(L_retain.detach().cpu())
+            forg = float(L_forget.detach().cpu())
+            eos = float(L_eos.detach().cpu())
+            tot = float(loss.detach().cpu())
             logs = {
-                "loss_retain": float(L_retain.detach().cpu()),
-                "loss_forget": float(L_forget.detach().cpu()),
-                "loss_eos": float(L_eos.detach().cpu()),
-                "loss_toal": float(loss.detach().cpu()),
+                "loss_retain": round(ret if abs(ret) > 1e-6 else 0.0, 4),
+                "loss_forget": round(forg if abs(forg) > 1e-6 else 0.0, 4),
+                "loss_eos": round(eos if abs(eos) > 1e-6 else 0.0, 4),
+                "loss_total": round(tot, 4),
             }
             self.log(logs)
         return (loss, outputs) if return_outputs else loss

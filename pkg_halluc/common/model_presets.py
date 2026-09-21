@@ -1,4 +1,4 @@
-"""Bảng preset: tên ngắn của model -> id Hugging Face đầy đủ."""
+"""Preset: short name -> ID Hugging Face"""
 from __future__ import annotations
 
 MODEL_PRESETS: dict[str, str] = {
@@ -28,5 +28,37 @@ MODEL_PRESETS: dict[str, str] = {
 
 
 def resolve_model_name(name: str) -> str:
-    """Đổi tên preset thành id HF đầy đủ, không có trong bảng thì giữ nguyên."""
+    """Preset name to full id HF"""
     return MODEL_PRESETS.get(name, name)
+
+
+def resolve_model_suffix(name: str, explicit_suffix: str | None = None) -> str:
+    """Map model name to suffix for tokenized tri-mask files"""
+    if explicit_suffix:
+        return explicit_suffix if explicit_suffix.startswith("_") else f"_{explicit_suffix}"
+
+    name_lower = (name or "").lower()
+
+    if "deepseek" in name_lower:
+        if any(k in name_lower for k in ("1.3b", "1b", "1.3", "1_3b")):
+            return "_deepseek_1B"
+        return "_deepseek"
+
+    if "llama" in name_lower:
+        if "1b" in name_lower or "1_b" in name_lower:
+            return "_llama_1B"
+        if "3b" in name_lower or "3_b" in name_lower:
+            return "_llama_3B"
+        return "_llama"
+
+    if "qwen" in name_lower:
+        if "3b" in name_lower:
+            return "_qwen_3B"
+        if "1.5b" in name_lower or "1_5b" in name_lower:
+            return "_qwen_1.5B"
+        if "0.5b" in name_lower or "0_5b" in name_lower:
+            return "_qwen_0.5B"
+        return "_qwen"
+
+    return ""
+

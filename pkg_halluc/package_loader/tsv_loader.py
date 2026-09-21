@@ -11,7 +11,7 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from .config import (
+from prompt_config import (
     PACKAGE_PREFIX_1,
     PACKAGE_PREFIX_2,
     PACKAGE_SYSTEM_PROMPT_1,
@@ -194,7 +194,6 @@ def get_tsv_data_and_loaders(
     rng = np.random.RandomState(seed)
     perm_indices = rng.permutation(total_len)
 
-    # 1. Select exemplars
     if balanced_exemplars:
         hallu_indices = np.where(all_labels == 0)[0]
         true_indices = np.where(all_labels == 1)[0]
@@ -209,13 +208,11 @@ def get_tsv_data_and_loaders(
 
     exemplar_set = set(exemplar_indices.tolist())
 
-    # 2. Divide remaining into wild (train) and test
     remaining_indices = [i for i in perm_indices if i not in exemplar_set]
     num_wild = int(wild_ratio * len(remaining_indices))
     wild_indices = np.array(remaining_indices[:num_wild])
     test_indices = np.array(remaining_indices[num_wild:])
 
-    # 3. Construct TSV prompts and labels lists
     test_prompts = [all_prompts[i] for i in test_indices]
     gt_label_test = all_labels[test_indices]
 
@@ -228,7 +225,6 @@ def get_tsv_data_and_loaders(
     prompts_list = [test_prompts, train_prompts, exemplar_prompts]
     labels_list = [gt_label_test, gt_label_wild, gt_label_exemplar]
 
-    # 4. Build standard PyTorch DataLoaders with TSVBatchCollator
     collator = TSVBatchCollator()
 
     test_subdataset = [dataset[i] for i in test_indices]

@@ -1,4 +1,4 @@
-"""Package inquiry prompts, fallback chat templates, and model token parameters."""
+"""Package inquiry prompts, fallback chat templates, and model token parameters"""
 
 PACKAGE_SYSTEM_PROMPT_1 = (
     "You are a coding assistant that determines Python packages necessary to execute code. "

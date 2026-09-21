@@ -1,4 +1,4 @@
-"""Tải base model từ Hugging Face rồi sinh thử 1 câu để kiểm tra môi trường."""
+"""Base model Download from Hugging Face"""
 from __future__ import annotations
 
 import argparse

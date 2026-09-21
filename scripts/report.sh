@@ -1,4 +1,4 @@
-# Gộp eval_runs/* thành 2 bảng kết quả cuối (pkg_halluc/evaluation/report_build.py), xem --help
+# Merge eval_runs/* into 2 final result tables; see --help
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,15 +9,15 @@ CONFIG_FILE=""
 
 usage() {
     cat <<USAGE
-Cách dùng: report.sh [tuỳ chọn]
+Cách dùng: report.sh [optional]
   --config FILE       File config JSON (vd model_config/default.json)
-  --model-name TEN   
+  --model-name NAME   
   -h, --help
 USAGE
     exit "${1:-0}"
 }
 
-# Pass 1:  tìm --config
+# Pass 1:  find --config
 _args=("$@")
 for ((_i = 0; _i < ${#_args[@]}; _i++)); do
     if [ "${_args[$_i]}" = "--config" ]; then
@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
         --config) shift 2 ;; 
         --model-name) MODEL_NAME="$2"; shift 2 ;;
         -h|--help) usage 0 ;;
-        *) echo "tuỳ chọn không rõ: $1" >&2; usage 1 ;;
+        *) echo "unknown option: $1" >&2; usage 1 ;;
     esac
 done
 

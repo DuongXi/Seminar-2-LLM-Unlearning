@@ -24,7 +24,7 @@ from pkg_halluc.training.tri_mask.npo_trainer import NPOTrainer
 
 
 def resolve_dtype(dtype_arg: str) -> torch.dtype:
-    """"auto" chọn bfloat16 nếu GPU hỗ trợ, không thì float16."""
+    """Auto pick bfloat16 if GPU support, or else float16."""
     if dtype_arg == "bfloat16":
         return torch.bfloat16
     if dtype_arg == "float16":
@@ -78,8 +78,8 @@ def main():
     if args.resume_from_checkpoint:
         ckpt = os.path.abspath(args.resume_from_checkpoint)
         if not os.path.isdir(ckpt):
-            raise FileNotFoundError(f"Không tìm thấy checkpoint để resume: {ckpt}")
-        print(f"Đang load trọng số full-parameter từ checkpoint: {ckpt}")
+            raise FileNotFoundError(f"No checkpoint found: {ckpt}")
+        print(f"Loading param full-parameter from checkpoint: {ckpt}")
         model = AutoModelForCausalLM.from_pretrained(
             ckpt,
             cache_dir=cache_dir,
@@ -105,7 +105,7 @@ def main():
         tokenizer = AutoTokenizer.from_pretrained(
             args.model_path, token=hf_token, cache_dir=cache_dir
         )
-    print("Đã load model thành công!")
+    print("Model loaded!")
 
 
     if "DeepSeek-Coder-V2-Lite-Instruct" in args.model_path and not args.resume_from_checkpoint:
@@ -123,7 +123,7 @@ def main():
         )
 
     if args.use_lora:
-        print(f"Đang áp LoRA với rank={args.lora_rank} ...")
+        print(f"Applying LoRA with rank={args.lora_rank} ...")
         model = apply_lora(model, lora_rank=args.lora_rank)
 
     # PARAMETERS
@@ -139,7 +139,7 @@ def main():
     vocab_size = len(tokenizer)
     print(f"Vocab size: {vocab_size}")
 
-    print("Đang load dataset theo token...")
+    print("Loading dataset by token...")
 
     # early stopping
     early_stopping_enabled = not args.disable_early_stopping
@@ -151,8 +151,8 @@ def main():
         n_val = max(1, round(len(retain_ds) * args.val_ratio))
         if len(retain_ds) - n_val < 1:
             print(
-                f"[train_tri_mask] tập retain quá nhỏ ({len(retain_ds)} dòng) để tách val split "
-                f"với val_ratio={args.val_ratio} -- tắt early stopping."
+                f"[train_tri_mask] The retain set is too small ({len(retain_ds)} rows) to create a validation split. "
+                f"with val_ratio={args.val_ratio} -- turn off early stopping."
             )
             early_stopping_enabled = False
         else:
@@ -160,7 +160,7 @@ def main():
             retain_train_ds, retain_val_ds = retain_split["train"], retain_split["test"]
             train_ds = concatenate_datasets([retain_train_ds, forget_ds])
             print(
-                f"Early stopping trên: retain_train={len(retain_train_ds)} "
+                f"Early stopping on: retain_train={len(retain_train_ds)} "
                 f"retain_val={len(retain_val_ds)} forget={len(forget_ds)} (val_ratio={args.val_ratio}), "
                 f"eval_steps={args.eval_steps}, patience={args.early_stopping_patience}, "
                 f"threshold={args.early_stopping_threshold}"
@@ -192,45 +192,47 @@ def main():
         report_to.append("wandb")
 
     eval_save_steps = args.eval_steps if early_stopping_enabled else 25
-    training_args = TrainingArguments(
+    training_args_kwargs = dict(
         output_dir=args.output_dir,
         num_train_epochs=args.num_train_epochs,
         learning_rate=args.lr,
         weight_decay=0.01,
         warmup_steps=10,
         logging_strategy="steps",
-        logging_dir=os.path.join(args.output_dir, "logs"),
         logging_steps=5,
         eval_strategy=("steps" if early_stopping_enabled else "no"),
         eval_steps=(eval_save_steps if early_stopping_enabled else None),
-        save_strategy=("steps" if early_stopping_enabled else "no"),
+        save_strategy="steps",
         save_steps=eval_save_steps,
-        save_total_limit=2,
+        save_total_limit=(3 if early_stopping_enabled else 2),
         load_best_model_at_end=early_stopping_enabled,
         metric_for_best_model=("eval_loss" if early_stopping_enabled else None),
         greater_is_better=(False if early_stopping_enabled else None),
-        save_only_model=early_stopping_enabled,
-        prediction_loss_only=True,
-        per_device_train_batch_size=1,  
+        per_device_train_batch_size=1,
         per_device_eval_batch_size=1,
+        prediction_loss_only=True,
         gradient_accumulation_steps=16,
         gradient_checkpointing=True,
-        bf16=(dtype == torch.bfloat16),
-        fp16=(dtype == torch.float16),
+        bf16=(args.dtype == "bfloat16"),
+        fp16=(args.dtype == "float16"),
         max_grad_norm=1.0,
         lr_scheduler_type="constant",
-        report_to=report_to,
+        report_to=["tensorboard"],
         remove_unused_columns=False,
-        deepspeed=args.deepspeed,
-        seed=random_seed,
+        seed=args.seed,
     )
+    import inspect
+    sig = inspect.signature(TrainingArguments.__init__).parameters
+    if "eval_strategy" not in sig and "evaluation_strategy" in sig:
+        training_args_kwargs["evaluation_strategy"] = training_args_kwargs.pop("eval_strategy")
+    training_args = TrainingArguments(**training_args_kwargs)
 
     trainer_kwargs = dict(
         model=model,
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=retain_val_ds,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         data_collator=collator,
         lambda_retain=lambda_retain,
         lambda_forget=lambda_forget,
@@ -248,14 +250,14 @@ def main():
 
     trainer = trainer_class(**trainer_kwargs)
 
-    print("Đang train…")
+    print("Training...")
     trainer.train()
 
-    print("Đang lưu model…")
+    print("Model saving...")
     if args.use_lora:
         model.save_pretrained(args.output_dir)
         tokenizer.save_pretrained(args.output_dir)
-        print(f"Đã lưu LoRA adapter vào {args.output_dir}")
+        print(f"Saved LoRA adapter to {args.output_dir}")
     else:
         trainer.save_model(args.output_dir)
         tokenizer.save_pretrained(args.output_dir)
@@ -298,48 +300,48 @@ def main():
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model-path", required=True, help="Đường dẫn cục bộ (hoặc id HF) của base model cần fine-tune")
-    parser.add_argument("--retain-file", required=True, help="File JSONL retain đã tokenize (tri-mask), dựng bởi scripts/build_data.sh")
-    parser.add_argument("--forget-file", required=True, help="File JSONL forget đã tokenize (tri-mask), dựng bởi scripts/build_data.sh")
-    parser.add_argument("--output-dir", required=True, help="Thư mục lưu checkpoint")
-    parser.add_argument("--cache-dir", default=None, help="Thư mục cache của huggingface_hub (tuỳ chọn)")
-    parser.add_argument("--save_string", type=str, help="Chuỗi gắn thêm vào tên run (chỉ dùng để đặt tên trên wandb)")
+    parser.add_argument("--model-path", required=True, help="Path to base model")
+    parser.add_argument("--retain-file", required=True, help="Tokenize JSONL retain (tri-mask)")
+    parser.add_argument("--forget-file", required=True, help="Tokenized JSONL forget (tri-mask)")
+    parser.add_argument("--output-dir", required=True, help="Checkpoint dir")
+    parser.add_argument("--cache-dir", default=None, help="Cache in huggingface_hub (optional)")
+    parser.add_argument("--save_string", type=str, help="String appended to the run name (only used for naming on wandb)")
     parser.add_argument(
         "--resume_from_checkpoint", type=str, default=None,
         help=(
-            "Đường dẫn tới 1 thư mục model HF hoặc checkpoint Trainer có đủ trọng số. "
-            "Chỉ load trọng số; trạng thái optimizer/trainer không được khôi phục "
+            "Path to an HF model directory or Trainer checkpoint containing the weights. "
+            "Load weights only; optimizer/trainer state is not restored. "
         ),
     )
     parser.add_argument("--loss_function", type=str, choices=["ga", "npo"], required=True, help="")
     parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")
-    parser.add_argument("--num_train_epochs", type=int, default=60, help="Số epoch train")
-    parser.add_argument("--use_wandb", action="store_true", help="Bật log wandb")
-    parser.add_argument("--deepspeed", type=str, default=None, help="Đường dẫn file config DeepSpeed")
-    parser.add_argument("--use_hf", action="store_true", help="Dùng token HF (đọc qua tri_mask_utils.load_hf_token) khi tải model/tokenizer")
+    parser.add_argument("--num_train_epochs", type=int, default=60, help="Train epoch")
+    parser.add_argument("--use_wandb", action="store_true", help="Turn on log wandb")
+    parser.add_argument("--deepspeed", type=str, default=None, help="Path to DeepSpeed config")
+    parser.add_argument("--use_hf", action="store_true", help="Use token HF when loading model/tokenizer")
     parser.add_argument(
         "--dtype", type=str, default="auto", choices=["auto", "bfloat16", "float16"],
-        help="auto chọn bfloat16 trên GPU hỗ trợ, không thì float16",
+        help="Auto pick bfloat16, else float16",
     )
-    parser.add_argument("--lambda_retain", type=float, default=1.0, help="Trọng số CE loss cho token retain hợp lệ (mask=1)")
-    parser.add_argument("--lambda_forget", type=float, default=0.5, help="Trọng số NPO loss cho token hallucinated (mask=2)")
-    parser.add_argument("--lambda_eos", type=int, default=2, help="Trọng số cho token eos để tránh lặp lại")
-    parser.add_argument("--seed", type=int, default=None, help="Seed để tái lập kết quả")
-    parser.add_argument("--use_lora", action="store_true", help="Train bằng LoRA thay vì fine-tune toàn bộ trọng số")
+    parser.add_argument("--lambda_retain", type=float, default=1.0, help="CE loss weight for valid retained tokens (mask=1)")
+    parser.add_argument("--lambda_forget", type=float, default=0.5, help="NPO loss weight for hallucinated tokens (mask=2)")
+    parser.add_argument("--lambda_eos", type=int, default=2, help="Weight for the EOS token to prevent repetition")
+    parser.add_argument("--seed", type=int, default=None, help="Seed")
+    parser.add_argument("--use_lora", action="store_true", help="LoRA adapter train")
     parser.add_argument("--lora_rank", type=int, default=16, help="LoRA rank (r)")
     parser.add_argument(
         "--val_ratio", type=float, default=0.1,
-        help="Tỉ lệ tách từ tập retain làm eval split cho early stopping",
+        help="Val split ratio for early stopping",
     )
-    parser.add_argument("--eval_steps", type=int, default=25, help="Eval (và save) mỗi N optimizer step")
-    parser.add_argument("--early_stopping_patience", type=int, default=3, help="Dừng sau bấy nhiêu lần eval không cải thiện")
+    parser.add_argument("--eval_steps", type=int, default=25, help="Eval (and save) for N optimizer step")
+    parser.add_argument("--early_stopping_patience", type=int, default=3, help="Stop after a certain number of evaluations without improvement")
     parser.add_argument(
         "--early_stopping_threshold", type=float, default=0.0,
-        help="Mức giảm eval_loss tối thiểu để tính là có cải thiện",
+        help="Minimum reduction in eval_loss to count as an improvement",
     )
     parser.add_argument(
         "--disable_early_stopping", action="store_true",
-        help="Train đủ num_train_epochs trên toàn bộ dữ liệu",
+        help="Train for the specified number of epochs on the entire datasets",
     )
 
     return parser.parse_args()

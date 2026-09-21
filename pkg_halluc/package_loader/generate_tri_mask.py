@@ -124,12 +124,12 @@ def build_tri_mask_record(
         res["template"] = template_tag
     return res
 
-
-def resolve_model_suffix(model_name: str, explicit_suffix: Optional[str] = None) -> str:
-    """
-    Resolve dataset filename suffix. Defaults to explicit_suffix if provided, otherwise empty string (no suffix).
-    """
-    return explicit_suffix or ""
+try:
+    from pkg_halluc.common.model_presets import resolve_model_suffix
+except ImportError:
+    def resolve_model_suffix(model_name: str, explicit_suffix: Optional[str] = None) -> str:
+        """Fallback if common module cannot be imported"""
+        return explicit_suffix or ""
 
 def generate_tri_mask_dataset(
     dataset: Union[PackageUnlearningDataset, str, Path, List[str], pd.DataFrame] = None,
@@ -255,15 +255,15 @@ def generate_tri_mask_dataset(
         with open(stats_file, "w", encoding="utf-8") as f:
             json.dump(stats, f, indent=2)
 
-        print(f"[OK] Tri-mask Retain Dataset : {retain_file} ({len(retain_records):,} samples)")
-        print(f"[OK] Tri-mask Forget Dataset : {forget_file} ({len(forget_records):,} samples)")
-        print(f"[OK] Metadata & Statistics   : {stats_file}")
+        print(f"Tri-mask Retain Dataset : {retain_file} ({len(retain_records):,} samples)")
+        print(f"Tri-mask Forget Dataset : {forget_file} ({len(forget_records):,} samples)")
+        print(f"Metadata & Statistics   : {stats_file}")
 
     return retain_records, forget_records
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate tokenized Tri-Mask JSONL datasets (npo_retain_tok / npo_forget_tok) for tri-mask unlearning.",
+        description="Generate Tri-Mask JSONL datasets for tri-mask unlearning.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -303,7 +303,7 @@ def main():
         type=int,
         nargs="+",
         default=[1, 2],
-        help="Query modes to process (1: Code->Packages, 2: Problem->Packages).",
+        help="Query modes to process.",
     )
 
     args = parser.parse_args()

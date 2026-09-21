@@ -11,9 +11,9 @@ CONFIG_FILE=""
 
 usage() {
     cat <<USAGE
-Cách dùng: download_model.sh [tuỳ chọn]
-  --config FILE              File config JSON (vd model_config/default.json) 
-  --model TEN_HOAC_ID_HF    Tên preset (vd qwen2.5-coder-1.5b) hoặc id HF đầy đủ (mặc định: $MODEL)
+Cách dùng: download_model.sh [optional]
+  --config FILE              File config JSON 
+  --model TEN_HOAC_ID_HF     Preset (e.g. qwen2.5-coder-1.5b) or HF id (default: $MODEL)
   --dtype auto|bfloat16|float16    
   --skip-sanity-check               
   -h, --help
@@ -21,7 +21,7 @@ USAGE
     exit "${1:-0}"
 }
 
-# Pass 1: tìm --config để làm mặc định trước
+# Pass 1: Look for `--config` as default
 _args=("$@")
 for ((_i = 0; _i < ${#_args[@]}; _i++)); do
     if [ "${_args[$_i]}" = "--config" ]; then
@@ -37,7 +37,7 @@ if [ -n "$CONFIG_FILE" ]; then
     echo "[download-model] da nap config: $CONFIG_FILE"
 fi
 
-# Pass 2: xử lý ghi đè giá trị từ config
+# Pass 2: handle value overrides from the config
 while [ $# -gt 0 ]; do
     case "$1" in
         --config) shift 2 ;; 

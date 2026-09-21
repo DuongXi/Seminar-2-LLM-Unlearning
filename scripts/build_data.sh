@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Dựng dữ liệu tri-mask retain/forget cho GA/NPO cần tải model trước
+# To generate tri-mask retain/forget data for GA/NPO, the model must be loaded first
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,18 +31,18 @@ OUT_PLAIN_FORGET=""
 usage() {
     cat <<USAGE
 Cách dùng: build_data.sh [tuỳ chọn]
-  --config FILE                       File config JSON (vd model_config/default.json) 
-  --model TEN_HOAC_ID_HF              Id HF hoặc preset model (mặc định: $MODEL)
-  --model-path DUONG_DAN              Đường dẫn cục bộ tới model (ghi đè --model nếu có)
-  --dtype auto|bfloat16|float16|float32 (mặc định: $DTYPE)
-  --seed INT                          Random seed (mặc định: $SEED)
-  --device-map STR                    Device map (mặc định: $DEVICE_MAP)
-  --max-length INT                    Độ dài token tối đa (mặc định: $MAX_LENGTH)
-  --val-ratio FLOAT                   Tỉ lệ tách từ retain làm val split (mặc định: $VAL_RATIO)
-  --max-train-samples-per-split INT   Giới hạn số mẫu mỗi split cho smoke test
-  --result-files FILE [FILE ...]      Danh sách CSV kết quả (mặc định: auto-detect)
-  --out-master FILE                   Đường dẫn lưu/tái sử dụng master dataset pre-tri-mask
-  --out-val-master FILE               Đường dẫn lưu master val dataset
+  --config FILE                       File config JSON
+  --model TEN_HOAC_ID_HF              Id HF hoặc preset model (default: $MODEL)
+  --model-path DUONG_DAN              Path to model (override with --model if any)
+  --dtype auto|bfloat16|float16|float32 (default: $DTYPE)
+  --seed INT                          Random seed (default: $SEED)
+  --device-map STR                    Device map (default: $DEVICE_MAP)
+  --max-length INT                    max length token (default: $MAX_LENGTH)
+  --val-ratio FLOAT                   Set the split ratio for the validation set (default: $VAL_RATIO)
+  --max-train-samples-per-split INT   Limit the number of samples per split for smoke tests
+  --result-files FILE [FILE ...]      Result CSV (default: auto-detect)
+  --out-master FILE                   Pre-tri-mask master dataset pipeline/reuse
+  --out-val-master FILE               Saving path for master val dataset
   --out-retain-tri-mask FILE          File JSONL retain tri-mask (alias: --retain-file)
   --out-forget-tri-mask FILE          File JSONL forget tri-mask (alias: --forget-file)
   --out-val-retain-tri-mask FILE      File JSONL val retain tri-mask
@@ -56,7 +56,7 @@ USAGE
     exit "${1:-0}"
 }
 
-# Pass 1: tìm --config làm mặc định trước
+# Pass 1: Look for `--config` as default
 _args=("$@")
 for ((_i = 0; _i < ${#_args[@]}; _i++)); do
     if [ "${_args[$_i]}" = "--config" ]; then
@@ -74,10 +74,10 @@ if [ -n "$CONFIG_FILE" ]; then
     [ -n "${CFG_MAX_LENGTH:-}" ] && MAX_LENGTH="$CFG_MAX_LENGTH"
     [ -n "${CFG_VAL_RATIO:-}" ] && VAL_RATIO="$CFG_VAL_RATIO"
     [ -n "${CFG_MAIN_PATH:-}" ] && MAIN_PATH="$CFG_MAIN_PATH"
-    echo "[build-data] da nap config: $CONFIG_FILE"
+    echo "Config set: $CONFIG_FILE"
 fi
 
-# Pass 2: xử lý ghi đè giá trị từ config
+# Pass 2: handle value overrides from the config
 while [ $# -gt 0 ]; do
     case "$1" in
         --config) shift 2 ;;
@@ -108,7 +108,7 @@ while [ $# -gt 0 ]; do
             done
             ;;
         -h|--help) usage 0 ;;
-        *) echo "tuỳ chọn không rõ: $1" >&2; usage 1 ;;
+        *) echo "Unknown option: $1" >&2; usage 1 ;;
     esac
 done
 
@@ -124,12 +124,24 @@ if [ -z "$MODEL_PATH" ]; then
     fi
 fi
 
+MODEL_SUFFIX="$(resolve_model_suffix "$MODEL")"
+[ -z "$MODEL_SUFFIX" ] && MODEL_SUFFIX="$(resolve_model_suffix "$MODEL_PATH")"
+
 MAIN_PATH="${MAIN_PATH%/}"
 [[ "$MAIN_PATH" != /* && "$MAIN_PATH" != [A-Za-z]:* ]] && MAIN_PATH="$REPO_ROOT/$MAIN_PATH"
-[ -z "$OUT_RETAIN_TRI_MASK" ] && OUT_RETAIN_TRI_MASK="$MAIN_PATH/tri_mask/npo_retain_tok.jsonl"
-[ -z "$OUT_FORGET_TRI_MASK" ] && OUT_FORGET_TRI_MASK="$MAIN_PATH/tri_mask/npo_forget_tok.jsonl"
+[ -z "$OUT_RETAIN_TRI_MASK" ] && OUT_RETAIN_TRI_MASK="$MAIN_PATH/tri_mask/npo_retain_tok${MODEL_SUFFIX}.jsonl"
+[ -z "$OUT_FORGET_TRI_MASK" ] && OUT_FORGET_TRI_MASK="$MAIN_PATH/tri_mask/npo_forget_tok${MODEL_SUFFIX}.jsonl"
 if [ -n "$VAL_RATIO" ] && [ "$VAL_RATIO" != "0" ] && [ "$VAL_RATIO" != "0.0" ]; then
-    [ -z "$OUT_VAL_RETAIN_TRI_MASK" ] && OUT_VAL_RETAIN_TRI_MASK="$MAIN_PATH/tri_mask/npo_val_retain_tok.jsonl"
+    [ -z "$OUT_VAL_RETAIN_TRI_MASK" ] && OUT_VAL_RETAIN_TRI_MASK="$MAIN_PATH/tri_mask/npo_val_retain_tok${MODEL_SUFFIX}.jsonl"
+fi
+if [ ${#RESULT_FILES[@]} -eq 0 ]; then
+    RESULT_FILES=(
+        "$MAIN_PATH/LLM_LY_results.csv"
+        "$MAIN_PATH/LLM_AT_results.csv"
+        "$MAIN_PATH/SO_LY_results.csv"
+        "$MAIN_PATH/SO_AT_results.csv"
+    )
+fi
 
 ARGS=(
     -m pkg_halluc.package_loader.build_data

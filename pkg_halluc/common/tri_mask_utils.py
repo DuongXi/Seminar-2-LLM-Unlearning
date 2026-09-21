@@ -38,7 +38,6 @@ MODE2_PREFIXES = [
 
 
 def get_random_prefix(mode: int) -> str:
-    """Chọn ngẫu nhiên 1 prefix hỏi package theo mode (1: từ code, 2: từ đề bài)."""
     if mode == 1:
         return random.choice(MODE1_PREFIXES)
     elif mode == 2:
@@ -46,7 +45,7 @@ def get_random_prefix(mode: int) -> str:
 
 
 def read_jsonl(path: str) -> List[Dict]:
-    """Đọc file JSONL thành list dict, bỏ qua dòng trống."""
+    """Turn JSONL to list dict"""
     items = []
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
@@ -58,29 +57,27 @@ def read_jsonl(path: str) -> List[Dict]:
 
 
 def load_toklevel_files(forget_tok_path: Optional[str], retain_tok_path: Optional[str]) -> Dataset:
-    """Đọc 2 file JSONL tri-mask (forget, retain) thành 1 Dataset dùng để train."""
+    """Turn JSONL tri-mask (forget, retain) to 1 dataset for training"""
     data = []
     for p in [forget_tok_path, retain_tok_path]:
         if p is None: 
             continue
         for ex in read_jsonl(p):
-            # Chỉ giữ các field cần cho việc train
             item = {
                 "input_ids": ex["input_ids"],
                 "attention_mask": ex["attention_mask"],
                 "labels": ex["labels"],
                 "tri_mask": ex["tri_mask"],
             }
-            # Kiểm tra độ dài các field phải khớp nhau
             assert (
                 len(item["input_ids"])
                 == len(item["attention_mask"])
                 == len(item["labels"])
                 == len(item["tri_mask"])
-            ), "Độ dài không khớp trong 1 mẫu token-level."
-            # tri_mask chỉ nhận 0 (ignore), 1 (retain), 2 (forget)
+            ), "Length doesn't fit in 1 token-level sample."
+            # 0 (ignore), 1 (retain), 2 (forget)
             if not all(t in (0, 1, 2) for t in item["tri_mask"]):
-                raise ValueError("tri_mask chỉ được chứa {0,1,2}.")
+                raise ValueError("tri_mask only contains {0,1,2}.")
             data.append(item)
 
     return Dataset.from_list(data)
@@ -88,7 +85,7 @@ def load_toklevel_files(forget_tok_path: Optional[str], retain_tok_path: Optiona
 
 @dataclass
 class TokLevelCollator:
-    """Collator pad động input_ids, attention_mask, labels và tri_mask."""
+    """Collator pad input_ids, attention_mask, labels and tri_mask"""
 
     pad_token_id: int
     label_pad_id: int = -100
@@ -119,7 +116,7 @@ class TokLevelCollator:
 
 
 def load_hf_token():
-    """Lấy token HF từ hf_token.txt (ưu tiên) hoặc biến môi trường HF_TOKEN."""
+    """Take token HF from hf_token.txt or HF_TOKEN"""
     token_file_path = os.path.join(os.getcwd(), "hf_token.txt")
     if os.path.exists(token_file_path):
         with open(token_file_path, "r") as f:
@@ -127,12 +124,12 @@ def load_hf_token():
     else:
         hf_token = os.getenv("HF_TOKEN")
     if hf_token is None:
-        raise ValueError("Biến môi trường HF_TOKEN chưa được set")
+        raise ValueError("HF_TOKEN hasn't been set")
     return hf_token
 
 
 def apply_lora(model, lora_rank: int = 16, lora_alpha: int = None, target_modules=None):
-    """Bọc causal LM bằng LoRA adapter qua PEFT, chỉ tham số LoRA là trainable."""
+    """Wrap causal LM with LoRA adapter qua PEFT, only LoRA is trainable"""
     if lora_alpha is None:
         lora_alpha = lora_rank * 2
 
@@ -165,17 +162,16 @@ def apply_lora(model, lora_rank: int = 16, lora_alpha: int = None, target_module
 
 
 def is_lora_model(model_path: str) -> bool:
-    """Kiểm tra thư mục model đã lưu có chứa LoRA adapter hay không."""
+    """Check if model contains LoRA adapter or not"""
     return os.path.isfile(os.path.join(model_path, "adapter_config.json"))
 
 
 def load_model_auto(
     model_path: str, device_map="auto", torch_dtype=None, attn_implementation=None
 ):
-    """Load model, tự nhận diện LoRA adapter rồi merge vào base model, trả (model, tokenizer)."""
+    """Load model, detect LoRA adapter, merge to base model, returns (model, tokenizer)"""
     extra_kwargs = {}
     if torch_dtype is not None:
-        # transformers 4.57.6 đổi tên tham số torch_dtype= thành dtype=
         extra_kwargs["dtype"] = torch_dtype
     if attn_implementation is not None:
         extra_kwargs["attn_implementation"] = attn_implementation
@@ -184,8 +180,8 @@ def load_model_auto(
         with open(os.path.join(model_path, "adapter_config.json"), "r") as f:
             adapter_cfg = json.load(f)
         base_model_path = adapter_cfg.get("base_model_name_or_path", model_path)
-        print(f"Phát hiện LoRA adapter tại {model_path}")
-        print(f"Đang load base model từ {base_model_path} ...")
+        print(f"LoRA adapter found at {model_path}")
+        print(f"Loading base model from {base_model_path} ...")
 
         base_model = AutoModelForCausalLM.from_pretrained(
             base_model_path,
@@ -194,7 +190,7 @@ def load_model_auto(
         )
         model = PeftModel.from_pretrained(base_model, model_path)
         model = model.merge_and_unload()
-        print("Đã merge LoRA adapter vào base model.")
+        print("Merged LoRA adapter to base model.")
 
         tokenizer = AutoTokenizer.from_pretrained(model_path)
     else:

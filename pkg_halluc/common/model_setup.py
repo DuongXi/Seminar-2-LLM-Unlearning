@@ -1,4 +1,4 @@
-"""Tải base model, build model + tokenizer và sinh thử để kiểm tra môi trường."""
+"""Download base model, build model + tokenizer"""
 from __future__ import annotations
 
 import os
@@ -21,7 +21,7 @@ def apply_hf_token() -> None:
 
 
 def download_base_model(model_name: str, models_dir: Path) -> Path:
-    """Tải model từ Hugging Face vào models_dir/<id đầy đủ>, đã có thì bỏ qua."""
+    """Tải model từ Hugging Face vào models_dir/<id đầy đủ>, đã có thì bỏ qua"""
     from huggingface_hub import snapshot_download
 
     apply_hf_token()
@@ -45,7 +45,7 @@ def build_model(
     model_family: str = "auto",
     padding_side: str = "right",
 ) -> tuple[Any, Any]:
-    """Build causal LM + tokenizer đã chuẩn hoá pad/eos, trả về (model, tokenizer)."""
+    """Build causal LM + tokenizer đã chuẩn hoá pad/eos, trả về (model, tokenizer)"""
     import torch
     from transformers import AutoModelForCausalLM
 
@@ -56,7 +56,6 @@ def build_model(
     raw_identifier = str(model_name_or_path)
     resolved_id = MODEL_PRESETS.get(raw_identifier, raw_identifier)
 
-    # Tokenizer đúng pad_token và chat_template
     tok = setup_tokenizer(
         resolved_id,
         model_family=model_family,
@@ -64,7 +63,6 @@ def build_model(
     )
     tok.padding_side = padding_side
 
-    # "auto" chọn bfloat16 nếu GPU hỗ trợ, không thì float16 (vd T4/P100)
     if isinstance(dtype, str):
         if dtype == "auto":
             torch_dtype = (
@@ -89,7 +87,6 @@ def build_model(
     )
     model.eval()
 
-    # Đồng bộ pad_token_id và eos_token_id giữa tokenizer và model
     if tok.pad_token_id is not None:
         model.config.pad_token_id = tok.pad_token_id
         if hasattr(model, "generation_config") and model.generation_config is not None:
@@ -103,7 +100,7 @@ def build_model(
 
 
 def sanity_check_generation(model_path: Path, dtype: str = "auto") -> str:
-    """Sinh thử 1 câu ngắn để xác nhận torch/transformers/CUDA chạy được."""
+    """Genarate 1 time to check if torch/transformers/CUDA runnable"""
     import torch
     from transformers import GenerationConfig
 
@@ -127,7 +124,7 @@ def sanity_check_generation(model_path: Path, dtype: str = "auto") -> str:
     with torch.no_grad():
         out = model.generate(**enc, generation_config=gen_cfg)
     text = tok.decode(out[0][enc["input_ids"].shape[1] :], skip_special_tokens=True)
-    print(f"Kết quả sanity-check: {text!r}")
+    print(f"Sanity check: {text!r}")
 
     del model
     if torch.cuda.is_available():

@@ -1,4 +1,4 @@
-# dùng chung của train_ga.sh và train_npo.sh
+# shared syntax for train_ga.sh and train_npo.sh
 set -euo pipefail
 
 LOSS_FUNCTION="$1"; shift
@@ -11,7 +11,7 @@ SAVE_TAG="$LOSS_FUNCTION"
 LR="1e-5"
 EPOCHS="3"
 SEED="42"
-DTYPE="auto"   # auto = bfloat16 nếu GPU hỗ trợ, không thì float16 (T4/P100 -> float16)
+DTYPE="auto"   # auto = bfloat16 if GPU supports, else float16
 VAL_RATIO="0.1"
 EVAL_STEPS="25"
 EARLY_STOP_PATIENCE="3"
@@ -26,25 +26,26 @@ CONFIG_FILE=""
 usage() {
     cat <<USAGE
 Cách dùng: train_${LOSS_FUNCTION}.sh [tuỳ chọn]
-  --config FILE                 File config JSON (vd model_config/default.json)
+  --config FILE                 config JSON
                                 
-  --model TEN_HOAC_DUONG_DAN     Id HF hoặc tên preset, phải tải sẵn
-                                  trong models/ (mặc định: $MODEL)
+  --model TEN_HOAC_DUONG_DAN     Id HF or preset in models/ (default: $MODEL)
   --model-path DUONG_DAN        
-  --save-tag TAG                  Tên thư mục checkpoint trong checkpoints/ (mặc định: $LOSS_FUNCTION)
-  --lr FLOAT                       Learning rate (mặc định: $LR)
-  --epochs INT                      Số epoch train (mặc định: $EPOCHS)
-  --seed INT                         Random seed (mặc định: $SEED)
-  --dtype auto|bfloat16|float16       dtype (mặc định: $DTYPE)
-  --val-ratio FLOAT                    Tỉ lệ tách từ retain để early stopping (mặc định: $VAL_RATIO)
-  --eval-steps INT                      Eval (và save) mỗi N optimizer step (mặc định: $EVAL_STEPS)
-  --early-stopping-patience INT          Dừng sau bấy nhiêu lần eval không cải thiện (mặc định: $EARLY_STOP_PATIENCE)
-  --early-stopping-threshold FLOAT        Mức giảm eval_loss tối thiểu để tính là cải thiện (mặc định: $EARLY_STOP_THRESHOLD)
-  --disable-early-stopping                 Train đủ num_train_epochs trên toàn bộ dữ liệu, không tách eval split
-  --use-lora                           Train LoRA adapter thay vì full fine-tune
-  --lora-rank INT                       LoRA rank (mặc định: $LORA_RANK; chỉ dùng khi có --use-lora)
-  --resume-from DUONG_DAN                 Resume trọng số full-parameter từ 1 checkpoint có sẵn
-  --out-dir DUONG_DAN                       Ghi đè thư mục output mặc định checkpoints/<model>_<tag>
+  --retain-file FILE              retain tri-mask file (default: auto-detect theo model suffix)
+  --forget-file FILE              forget tri-mask file (default: auto-detect theo model suffix)
+  --save-tag TAG                  checkpoint in checkpoints/ (default: $LOSS_FUNCTION)
+  --lr FLOAT                       Learning rate (default: $LR)
+  --epochs INT                      Train epoch (default: $EPOCHS)
+  --seed INT                         Random seed (default: $SEED)
+  --dtype auto|bfloat16|float16       dtype (default: $DTYPE)
+  --val-ratio FLOAT                    Split ratio for early stopping (default: $VAL_RATIO)
+  --eval-steps INT                      Eval (and save) for N optimizer step (default: $EVAL_STEPS)
+  --early-stopping-patience INT          Stop after a number of evaluations without improvement (default: $EARLY_STOP_PATIENCE)
+  --early-stopping-threshold FLOAT        Minimum reduction in eval_loss required to count as an improvement (default: $EARLY_STOP_THRESHOLD)
+  --disable-early-stopping                 Train for the full number of epochs on the entire dataset, without separating an evaluation split
+  --use-lora                           Train LoRA adapter
+  --lora-rank INT                       LoRA rank (default: $LORA_RANK; set when use --use-lora)
+  --resume-from DUONG_DAN                 Resume full-parameter weights from an existing checkpoint.
+  --out-dir DUONG_DAN                       Override the default output directory checkpoints/<model>_<tag>
   -h, --help
 
 USAGE
@@ -53,7 +54,7 @@ USAGE
 
 MAIN_PATH=""
 
-# Pass 1: tìm --config làm mặc định 
+# Pass 1: Look for `--config` as default 
 _args=("$@")
 for ((_i = 0; _i < ${#_args[@]}; _i++)); do
     if [ "${_args[$_i]}" = "--config" ]; then
@@ -79,13 +80,18 @@ if [ -n "$CONFIG_FILE" ]; then
     echo "[train_$LOSS_FUNCTION] da nap config: $CONFIG_FILE (methods.$LOSS_FUNCTION)"
 fi
 
-# Pass 2: xử lý ghi đè giá trị từ config
+RETAIN_FILE=""
+FORGET_FILE=""
+
+# Pass 2: handle value overrides from the config
 while [ $# -gt 0 ]; do
     case "$1" in
         --config) shift 2 ;; 
         --model) MODEL="$2"; shift 2 ;;
         --model-path|--model_path) MODEL_PATH="$2"; shift 2 ;;
         --main-path|--main_path) MAIN_PATH="$2"; shift 2 ;;
+        --retain-file|--retain_file) RETAIN_FILE="$2"; shift 2 ;;
+        --forget-file|--forget_file) FORGET_FILE="$2"; shift 2 ;;
         --save-tag) SAVE_TAG="$2"; shift 2 ;;
         --lr) LR="$2"; shift 2 ;;
         --epochs) EPOCHS="$2"; shift 2 ;;
@@ -105,21 +111,23 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Chuẩn hoá về id HF đầy đủ
 MODEL="$(resolve_model_name "$MODEL")"
 
 if [ -z "$MODEL_PATH" ]; then
     MODEL_PATH="$(resolve_model_path "$MODEL")"
 fi
 
+MODEL_SUFFIX="$(resolve_model_suffix "$MODEL")"
+[ -z "$MODEL_SUFFIX" ] && MODEL_SUFFIX="$(resolve_model_suffix "$MODEL_PATH")"
+
 MAIN_PATH="${MAIN_PATH%/}"
 [[ "$MAIN_PATH" != /* && "$MAIN_PATH" != [A-Za-z]:* ]] && MAIN_PATH="$REPO_ROOT/$MAIN_PATH"
-RETAIN_FILE="$MAIN_PATH/tri_mask/npo_retain_tok.jsonl"
-FORGET_FILE="$MAIN_PATH/tri_mask/npo_forget_tok.jsonl"
+[ -z "$RETAIN_FILE" ] && RETAIN_FILE="$MAIN_PATH/tri_mask/npo_retain_tok${MODEL_SUFFIX}.jsonl"
+[ -z "$FORGET_FILE" ] && FORGET_FILE="$MAIN_PATH/tri_mask/npo_forget_tok${MODEL_SUFFIX}.jsonl"
 
 if [ ! -f "$RETAIN_FILE" ] || [ ! -f "$FORGET_FILE" ]; then
-    echo "loi: chua co du lieu tri-mask cho model nay ($RETAIN_FILE)" >&2
-    echo "  Chay 'bash scripts/build_data.sh ${CONFIG_FILE:+--config "$CONFIG_FILE"} --model $MODEL' truoc." >&2
+    echo "Error: Tri-mask data is not yet available for this model: ($RETAIN_FILE)" >&2
+    echo "  Run 'bash scripts/build_data.sh ${CONFIG_FILE:+--config "$CONFIG_FILE"} --model $MODEL' first." >&2
     exit 1
 fi
 
@@ -151,4 +159,4 @@ echo "[train_$LOSS_FUNCTION] \$ python ${ARGS[*]}   (cwd=$REPO_ROOT)"
 cd "$REPO_ROOT"
 "$PYTHON_BIN" "${ARGS[@]}"
 
-echo "[train_$LOSS_FUNCTION] xong -> $OUT_DIR"
+echo "[train_$LOSS_FUNCTION] DONE -> $OUT_DIR"

@@ -38,39 +38,39 @@ def apply_lora_adapter(model, lora_rank: int):
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--model_path", required=True, help="Đường dẫn cục bộ tới base model")
-    ap.add_argument("--model_name", required=True, help="Id HF / tên preset")
+    ap.add_argument("--model_path", required=True, help="Path to base model")
+    ap.add_argument("--model_name", required=True, help="Id HF / preset")
     ap.add_argument("--loss_function", required=True, choices=["ga_plain", "npo_plain"])
     ap.add_argument("--save_tag", required=True)
     ap.add_argument("--lr", type=float, default=1e-5)
     ap.add_argument("--num_train_epochs", type=int, default=3)
     ap.add_argument("--lambda_retain", type=float, default=1.0)
     ap.add_argument("--lambda_forget", type=float, default=0.5)
-    ap.add_argument("--use_lora", action="store_true", help="Train LoRA adapter thay vì full fine-tune")
+    ap.add_argument("--use_lora", action="store_true", help="LoRA adapter train")
     ap.add_argument("--lora_rank", type=int, default=16)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--dtype", default="bfloat16", choices=["bfloat16", "float16", "float32", "auto"])
     ap.add_argument("--max_length", type=int, default=2048)
     ap.add_argument(
         "--max_samples_per_split", type=int, default=None,
-        help="Giới hạn số dòng retain/forget (for fast test)",
+        help="Limit retain/forget (for fast test)",
     )
-    ap.add_argument("--result_files", nargs="+", required=True, help="Các file CSV kết quả")
+    ap.add_argument("--result_files", nargs="+", required=True, help="result CSV")
     ap.add_argument("--out_dir", required=True)
     ap.add_argument(
         "--val_ratio", type=float, default=0.1,
-        help="Tỉ lệ tách ra từ tập retain làm eval split cho early stopping "
+        help="Val split ratio for early stopping "
         "",
     )
-    ap.add_argument("--eval_steps", type=int, default=25, help="Eval (và save) mỗi N optimizer step")
-    ap.add_argument("--early_stopping_patience", type=int, default=3, help="Dừng sau bấy nhiêu lần eval không cải thiện")
+    ap.add_argument("--eval_steps", type=int, default=25, help="Eval (and save) for N optimizer step")
+    ap.add_argument("--early_stopping_patience", type=int, default=3, help="Stop after a certain number of evaluations without improvement")
     ap.add_argument(
         "--early_stopping_threshold", type=float, default=0.0,
-        help="Mức giảm eval_loss tối thiểu để tính là có cải thiện",
+        help="Minimum reduction in eval_loss to count as an improvement",
     )
     ap.add_argument(
         "--disable_early_stopping", action="store_true",
-        help="Train đủ num_train_epochs, không tách eval split",
+        help="Train for the full number of epochs without separating an evaluation split",
     )
     return ap.parse_args()
 
@@ -124,8 +124,8 @@ def main() -> None:
         n_val = max(1, round(len(retain_ds) * args.val_ratio))
         if len(retain_ds) - n_val < 1:
             print(
-                f"[train_plain] tập retain quá nhỏ ({len(retain_ds)} dòng) để tách val split "
-                f"với val_ratio={args.val_ratio} -- tắt early stopping."
+                f"[train_plain] The retain set is too small ({len(retain_ds)} rows) to create a validation split. "
+                f"with val_ratio={args.val_ratio} -- turn off early stopping."
             )
             early_stopping_enabled = False
         else:
@@ -135,7 +135,7 @@ def main() -> None:
                 generator=torch.Generator().manual_seed(args.seed),
             )
             print(
-                f"Early stopping trên: retain_train={len(retain_train_ds)} "
+                f"Early stopping on: retain_train={len(retain_train_ds)} "
                 f"retain_val={len(retain_val_ds)} (val_ratio={args.val_ratio}), "
                 f"eval_steps={args.eval_steps}, patience={args.early_stopping_patience}, "
                 f"threshold={args.early_stopping_threshold}"
@@ -148,14 +148,13 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     eval_save_steps = args.eval_steps if early_stopping_enabled else 25
-    training_args = TrainingArguments(
+    training_args_kwargs = dict(
         output_dir=str(out_dir),
         num_train_epochs=args.num_train_epochs,
         learning_rate=args.lr,
         weight_decay=0.01,
         warmup_steps=10,
         logging_strategy="steps",
-        logging_dir=str(out_dir / "logs"),
         logging_steps=5,
         eval_strategy=("steps" if early_stopping_enabled else "no"),
         eval_steps=(eval_save_steps if early_stopping_enabled else None),
@@ -178,6 +177,11 @@ def main() -> None:
         remove_unused_columns=False,
         seed=args.seed,
     )
+    import inspect
+    sig = inspect.signature(TrainingArguments.__init__).parameters
+    if "eval_strategy" not in sig and "evaluation_strategy" in sig:
+        training_args_kwargs["evaluation_strategy"] = training_args_kwargs.pop("eval_strategy")
+    training_args = TrainingArguments(**training_args_kwargs)
 
     vocab_size = len(tok)
     trainer_cls = GAPlainTrainer if args.loss_function == "ga_plain" else NPOPlainTrainer
@@ -186,7 +190,7 @@ def main() -> None:
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=(retain_val_ds if early_stopping_enabled else None),
-        tokenizer=tok,
+        processing_class=tok,
         data_collator=collator,
         lambda_retain=args.lambda_retain,
         lambda_forget=args.lambda_forget,
@@ -200,10 +204,10 @@ def main() -> None:
         ),
     )
 
-    print(f"Đang train {args.loss_function} (plain, không tri-mask)...")
+    print(f"Training {args.loss_function} (plain, no tri-mask)...")
     trainer.train()
 
-    print("Đang lưu model...")
+    print("Saving model...")
     if args.use_lora:
         trainer.model.save_pretrained(str(out_dir))
     else:

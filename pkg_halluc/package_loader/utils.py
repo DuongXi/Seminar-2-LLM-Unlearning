@@ -16,7 +16,7 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
-from .config import (
+from prompt_config import (
     CHAT_TEMPLATES,
     MODEL_CONFIGS,
     PACKAGE_PREFIX_1,

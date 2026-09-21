@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 
-from .config import (
+from prompt_config import (
     PACKAGE_PREFIX_1,
     PACKAGE_PREFIX_2,
     PACKAGE_SYSTEM_PROMPT_1,
@@ -229,7 +229,7 @@ class PackageUnlearningDataset(Dataset):
         seed: int = 42,
         split_retain_only: bool = True,
     ) -> Tuple["PackageUnlearningDataset", "PackageUnlearningDataset"]:
-        """Split dataset into train and validation sets grouped by prompt to prevent data leakage."""
+        """Split dataset into train and validation sets grouped by prompt to prevent data leakage"""
         train_records, val_records = split_records_by_prompt(
             self.records,
             val_ratio=val_ratio,
@@ -250,7 +250,7 @@ class PackageUnlearningDataset(Dataset):
         single_objective_forget: bool = True,
         max_length: Optional[int] = None,
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-        """Exports this PackageUnlearningDataset directly to tri-mask records and JSONL files."""
+        """Exports this PackageUnlearningDataset directly to tri-mask records and JSONL files"""
         from .generate_tri_mask import generate_tri_mask_dataset
 
         return generate_tri_mask_dataset(

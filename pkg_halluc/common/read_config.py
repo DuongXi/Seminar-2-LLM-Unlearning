@@ -1,4 +1,4 @@
-"""Đọc file config JSON và in ra các biến shell CFG_<KEY> (scripts/common.sh dùng)."""
+"""Đọc file config JSON và in ra các biến shell CFG_<KEY> (scripts/common.sh dùng)"""
 from __future__ import annotations
 
 import argparse
@@ -8,7 +8,7 @@ import sys
 
 
 def get_section(data: dict, dotted_path: str) -> dict:
-    """Lấy object con theo đường dẫn dạng "methods.ga", không thấy thì trả {}."""
+    """Get child object"""
     node = data
     if dotted_path:
         for part in dotted_path.split("."):
@@ -19,24 +19,24 @@ def get_section(data: dict, dotted_path: str) -> dict:
 
 
 def to_shell_value(value):
-    """Đổi giá trị JSON sang chuỗi shell, kiểu không hỗ trợ thì trả None."""
+    """Set JSON value to shell string"""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (int, float, str)):
         return str(value)
     if isinstance(value, list) and all(isinstance(v, (int, float, str)) for v in value):
         return " ".join(str(v) for v in value)
-    return None  # dict lồng nhau hoặc list phức tạp thì bỏ qua
+    return None  # omit nested dict or complex list
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--file", required=True, help="Đường dẫn tới file config JSON")
+    ap.add_argument("--file", required=True, help="Path to JSON config file")
     ap.add_argument(
         "--section", action="append", default=None,
-        help='Đường dẫn dotted tới 1 object con, vd "methods.ga" hoặc "eval". '
-        'Có thể lặp lại; section sau đè lên section trước nếu trùng key. '
-        'Bỏ trống hoặc không truyền = lấy toàn bộ key ở gốc.',
+        help='Path to a child object, e.g. "methods.ga" or "eval". '
+        'Can be duplicatd; subsequent section overwrites the preceding one if the keys overlap. '
+        'Leave blank or omit to retrieve all keys at the root.',
     )
     args = ap.parse_args()
 

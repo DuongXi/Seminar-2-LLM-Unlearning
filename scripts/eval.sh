@@ -17,17 +17,17 @@ EXTRA_ARGS=()
 
 usage() {
     cat <<USAGE
-Cách dùng: eval.sh --tag TAG --model-path DUONG_DAN [tuỳ chọn]
-  --config FILE                 File config JSON (vd model_config/default.json)
-  --tag TAG                    Tên method để đặt tên thư mục kết quả, vd base/ga/npo/ga_plain/npo_plain (bắt buộc)
-  --model-path DUONG_DAN        Checkpoint cần eval (bắt buộc)
-  --n-prompts INT                 Số prompt lấy mẫu từ pool eval (mặc định: $N_PROMPTS)
-  --batch-size INT                 (mặc định: $BATCH_SIZE)
-  --seed INT                        (mặc định: $SEED)
-  --package-modes "1 2"              Chạy mode hỏi package nào (mặc định: "$PACKAGE_MODES")
-  --eval-prompts-path DUONG_DAN        
-  --out-dir DUONG_DAN                   (mặc định: $EVAL_RUNS_DIR/<tag>)
-  -- CAC_THAM_SO...                      
+Cách dùng: eval.sh --tag TAG --model-path PATH [optional]
+  --config FILE                 File config JSON (e.g. model_config/default.json)
+  --tag TAG                    method to name result file, e.g. base/ga/npo/ga_plain/npo_plain (mandatory)
+  --model-path PATH        Checkpoint that needs eval (mandatory)
+  --n-prompts INT                 Number of prompts sampled from the evaluation pool (default: $N_PROMPTS)
+  --batch-size INT                 (default: $BATCH_SIZE)
+  --seed INT                        (default: $SEED)
+  --package-modes "1 2"              Run the mode in which package (default: "$PACKAGE_MODES")
+  --eval-prompts-path PATH        
+  --out-dir PATH                   (default: $EVAL_RUNS_DIR/<tag>)
+  -- PARAMS...                      
                                           
   -h, --help
 
@@ -35,7 +35,7 @@ USAGE
     exit "${1:-0}"
 }
 
-# Pass 1:  tìm --config để làm mặc định trước
+# Pass 1: Look for `--config` as default
 _args=("$@")
 for ((_i = 0; _i < ${#_args[@]}; _i++)); do
     if [ "${_args[$_i]}" = "--config" ]; then
@@ -50,10 +50,10 @@ if [ -n "$CONFIG_FILE" ]; then
     [ -n "${CFG_N_EVAL_PROMPTS:-}" ] && N_PROMPTS="$CFG_N_EVAL_PROMPTS"
     [ -n "${CFG_BATCH_SIZE:-}" ] && BATCH_SIZE="$CFG_BATCH_SIZE"
     [ -n "${CFG_PACKAGE_MODES:-}" ] && PACKAGE_MODES="$CFG_PACKAGE_MODES"
-    echo "[eval] da nap config: $CONFIG_FILE (eval)"
+    echo "Config set: $CONFIG_FILE (eval)"
 fi
 
-# Pass 2: xử lý ghi đè giá trị từ config
+# Pass 2: handle value overrides from the config
 while [ $# -gt 0 ]; do
     case "$1" in
         --config) shift 2 ;; 
@@ -67,12 +67,12 @@ while [ $# -gt 0 ]; do
         --out-dir) OUT_DIR="$2"; shift 2 ;;
         -h|--help) usage 0 ;;
         --) shift; EXTRA_ARGS=("$@"); break ;;
-        *) echo "tuỳ chọn không rõ: $1" >&2; usage 1 ;;
+        *) echo "unknown option: $1" >&2; usage 1 ;;
     esac
 done
 
-[ -z "$TAG" ] && { echo "loi: --tag la bat buoc" >&2; usage 1; }
-[ -z "$MODEL_PATH" ] && { echo "loi: --model-path la bat buoc" >&2; usage 1; }
+[ -z "$TAG" ] && { echo "Error: --tag is mandatory" >&2; usage 1; }
+[ -z "$MODEL_PATH" ] && { echo "Error: --model-path is mandatory" >&2; usage 1; }
 [ -z "$OUT_DIR" ] && OUT_DIR="$EVAL_RUNS_DIR/$TAG"
 [ -z "$EVAL_PROMPTS_PATH" ] && EVAL_PROMPTS_PATH="$REPO_ROOT/data/eval/prompts.jsonl"
 
@@ -98,4 +98,4 @@ echo "[eval:$TAG] \$ python ${ARGS[*]}   (cwd=$REPO_ROOT)"
 cd "$REPO_ROOT"
 "$PYTHON_BIN" "${ARGS[@]}"
 
-echo "[eval:$TAG] xong -> $OUT_DIR/FINAL_RESULTS.csv"
+echo "[eval:$TAG] done -> $OUT_DIR/FINAL_RESULTS.csv"

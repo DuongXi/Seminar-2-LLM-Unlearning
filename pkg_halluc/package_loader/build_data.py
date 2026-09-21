@@ -14,12 +14,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import torch
-try:
-    from pkg_halluc.common.model_setup import build_model
-    from pkg_halluc.common.model_presets import MODEL_PRESETS
-except ImportError:
-    from pkg_halluc.model_setup import build_model
-    from pkg_halluc.config import MODEL_PRESETS
+from pkg_halluc.common.model_setup import build_model
+from pkg_halluc.common.model_presets import MODEL_PRESETS, resolve_model_suffix
+
 from pkg_halluc.package_loader.generate_tri_mask import (
     generate_tri_mask_dataset,
 )
@@ -55,6 +52,7 @@ def main():
     ap.add_argument("--max_train_samples_per_split", type=int, default=None, help="Cap samples per split for smoke test")
     args = ap.parse_args()
 
+    suffix = resolve_model_suffix(args.model_path)
     if args.main_path:
         main_dir = Path(args.main_path)
         if not args.result_files:
@@ -65,15 +63,22 @@ def main():
                 str(main_dir / "SO_AT_results.csv"),
             ]
         if not args.out_retain_tri_mask:
-            args.out_retain_tri_mask = str(main_dir / "tri_mask" / "npo_retain_tok.jsonl")
+            args.out_retain_tri_mask = str(main_dir / "tri_mask" / f"npo_retain_tok{suffix}.jsonl")
         if not args.out_forget_tri_mask:
-            args.out_forget_tri_mask = str(main_dir / "tri_mask" / "npo_forget_tok.jsonl")
+            args.out_forget_tri_mask = str(main_dir / "tri_mask" / f"npo_forget_tok{suffix}.jsonl")
         if not args.out_val_retain_tri_mask and args.val_ratio > 0.0:
-            args.out_val_retain_tri_mask = str(main_dir / "tri_mask" / "npo_val_retain_tok.jsonl")
+            args.out_val_retain_tri_mask = str(main_dir / "tri_mask" / f"npo_val_retain_tok{suffix}.jsonl")
         if not args.out_master:
             args.out_master = str(main_dir / "master_train.json")
         if not args.out_val_master and args.val_ratio > 0.0:
             args.out_val_master = str(main_dir / "master_val.json")
+    else:
+        if not args.out_retain_tri_mask:
+            args.out_retain_tri_mask = str(REPO_ROOT / "data" / "tri_mask" / f"npo_retain_tok{suffix}.jsonl")
+        if not args.out_forget_tri_mask:
+            args.out_forget_tri_mask = str(REPO_ROOT / "data" / "tri_mask" / f"npo_forget_tok{suffix}.jsonl")
+        if not args.out_val_retain_tri_mask and args.val_ratio > 0.0:
+            args.out_val_retain_tri_mask = str(REPO_ROOT / "data" / "tri_mask" / f"npo_val_retain_tok{suffix}.jsonl")
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -94,7 +99,7 @@ def main():
     reusing_master = False
     if out_master_path and out_master_path.is_file() and is_preprocessed(out_master_path):
         if out_val_master_path and out_val_master_path.is_file() and is_preprocessed(out_val_master_path):
-            print(f"[build_data] Found existing master train ({out_master_path}) and master val ({out_val_master_path}). Reusing both!")
+            print(f"Found existing master train ({out_master_path}) and master val ({out_val_master_path}). Reusing both!")
             train_ds = PackageUnlearningDataset(
                 data_source=str(out_master_path),
                 split_type="all",
@@ -113,7 +118,7 @@ def main():
             )
             reusing_master = True
         else:
-            print(f"[build_data] Found existing dataset pool at {out_master_path}. Loading it for splitting/processing.")
+            print(f"Found existing dataset pool at {out_master_path}. Loading it for splitting/processing.")
             unlearn_ds = PackageUnlearningDataset(
                 data_source=str(out_master_path),
                 split_type="all",
@@ -138,18 +143,18 @@ def main():
 
     val_retain_tri_mask_records = []
     if reusing_master:
-        print(f"[build_data] Loaded {len(train_ds)} train records and {len(val_ds)} val records.")
+        print(f"Loaded {len(train_ds)} train records and {len(val_ds)} val records.")
         retain_tri_mask_records, forget_tri_mask_records = generate_tri_mask_dataset(
             dataset=train_ds,
             tokenizer=tok,
-            suffix="",
+            suffix=suffix,
             max_length=args.max_length,
         )
         if args.out_val_retain_tri_mask and len(val_ds) > 0:
             val_retain_tri_mask_records, _ = generate_tri_mask_dataset(
                 dataset=val_ds,
                 tokenizer=tok,
-                suffix="",
+                suffix=suffix,
                 max_length=args.max_length,
             )
     elif args.val_ratio > 0.0:
@@ -158,40 +163,40 @@ def main():
             seed=args.seed,
             split_retain_only=True,
         )
-        print(f"[build_data] Split dataset with val_ratio={args.val_ratio}: train={len(train_ds)}, val={len(val_ds)}")
+        print(f"Split dataset with val_ratio={args.val_ratio}: train={len(train_ds)}, val={len(val_ds)}")
 
         # Save pre-tri-mask master datasets to disk
         if out_master_path:
             out_master_path.parent.mkdir(parents=True, exist_ok=True)
             train_ds.save_to_file(out_master_path)
-            print(f"[build_data] Saved master train records ({len(train_ds)}) to {out_master_path}")
+            print(f"Saved master train records ({len(train_ds)}) to {out_master_path}")
         if out_val_master_path and len(val_ds) > 0:
             out_val_master_path.parent.mkdir(parents=True, exist_ok=True)
             val_ds.save_to_file(out_val_master_path)
-            print(f"[build_data] Saved master val records ({len(val_ds)}) to {out_val_master_path}")
+            print(f"Saved master val records ({len(val_ds)}) to {out_val_master_path}")
 
         retain_tri_mask_records, forget_tri_mask_records = generate_tri_mask_dataset(
             dataset=train_ds,
             tokenizer=tok,
-            suffix="",
+            suffix=suffix,
             max_length=args.max_length,
         )
         if args.out_val_retain_tri_mask and len(val_ds) > 0:
             val_retain_tri_mask_records, _ = generate_tri_mask_dataset(
                 dataset=val_ds,
                 tokenizer=tok,
-                suffix="",
+                suffix=suffix,
                 max_length=args.max_length,
             )
     else:
-        print(f"[build_data] Loaded {len(unlearn_ds)} records from dataset (val_ratio=0).")
+        print(f"Loaded {len(unlearn_ds)} records from dataset (val_ratio=0).")
         if out_master_path and not reusing_master:
             out_master_path.parent.mkdir(parents=True, exist_ok=True)
             unlearn_ds.save_to_file(out_master_path)
         retain_tri_mask_records, forget_tri_mask_records = generate_tri_mask_dataset(
             dataset=unlearn_ds,
             tokenizer=tok,
-            suffix="",
+            suffix=suffix,
             max_length=args.max_length,
         )
 

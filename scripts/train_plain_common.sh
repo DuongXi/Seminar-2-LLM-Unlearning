@@ -1,4 +1,4 @@
-# dùng chung của train_ga_plain.sh và train_npo_plain.sh, cú pháp: train_plain_common.sh <ga_plain|npo_plain> [tuỳ chọn]
+# shared syntax for train_ga_plain.sh and train_npo_plain.sh: train_plain_common.sh <ga_plain|npo_plain> [tuỳ chọn]
 set -euo pipefail
 
 LOSS_FUNCTION="$1"; shift
@@ -29,28 +29,27 @@ CONFIG_FILE=""
 usage() {
     cat <<USAGE
 Cách dùng: train_${LOSS_FUNCTION}.sh [tuỳ chọn]
-  --config FILE                      File config JSON (vd model_config/default.json) 
+  --config FILE                      config JSON
                      
-  --model TEN_HOAC_DUONG_DAN         Id HF hoặc tên preset (xem pkg_halluc/common/model_presets.py), phải tải sẵn
-                                       trong models/ (mặc định: $MODEL)
+  --model TEN_HOAC_DUONG_DAN         Id HF or preset in models/ (default: $MODEL)
   --model-path DUONG_DAN            
-  --save-tag TAG                      Tên thư mục checkpoint trong checkpoints/ (mặc định: $LOSS_FUNCTION)
-  --lr FLOAT                           Learning rate (mặc định: $LR)
-  --epochs INT                          Số epoch train (mặc định: $EPOCHS)
-  --seed INT                             Random seed (mặc định: $SEED)
-  --dtype auto|bfloat16|float16|float32   (mặc định: $DTYPE)
-  --lambda-retain FLOAT                    (mặc định: $LAMBDA_RETAIN)
-  --lambda-forget FLOAT                    (mặc định: $LAMBDA_FORGET)
-  --max-length INT                          Độ dài token tối đa (mặc định: $MAX_LENGTH)
-  --val-ratio FLOAT                          Tỉ lệ tách từ retain để early stopping (mặc định: $VAL_RATIO)
-  --eval-steps INT                            (mặc định: $EVAL_STEPS)
-  --early-stopping-patience INT                (mặc định: $EARLY_STOP_PATIENCE)
-  --early-stopping-threshold FLOAT              (mặc định: $EARLY_STOP_THRESHOLD)
-  --disable-early-stopping                       Train đủ num_train_epochs, không tách eval split
-  --use-lora                                      Train LoRA adapter thay vì full fine-tune
-  --lora-rank INT                                  LoRA rank (mặc định: $LORA_RANK; chỉ dùng khi có --use-lora)
-  --max-samples-per-split INT                      Giới hạn số dòng retain/forget (for fast test)
-  --out-dir DUONG_DAN                               Ghi đè thư mục output mặc định checkpoints/<model>_<tag>
+  --save-tag TAG                      checkpoint in checkpoints/ (default: $LOSS_FUNCTION)
+  --lr FLOAT                           Learning rate (default: $LR)
+  --epochs INT                          Train epoch (default: $EPOCHS)
+  --seed INT                             Random seed (default: $SEED)
+  --dtype auto|bfloat16|float16|float32   (default: $DTYPE)
+  --lambda-retain FLOAT                    (default: $LAMBDA_RETAIN)
+  --lambda-forget FLOAT                    (default: $LAMBDA_FORGET)
+  --max-length INT                          max token length (default: $MAX_LENGTH)
+  --val-ratio FLOAT                          Split ratio for early stopping (default: $VAL_RATIO)
+  --eval-steps INT                            (default: $EVAL_STEPS)
+  --early-stopping-patience INT                (default: $EARLY_STOP_PATIENCE)
+  --early-stopping-threshold FLOAT              (default: $EARLY_STOP_THRESHOLD)
+  --disable-early-stopping                       Train for the full number of epochs on the entire dataset, without separating an evaluation split
+  --use-lora                                      Train LoRA adapter
+  --lora-rank INT                                  LoRA rank (default: $LORA_RANK; set when use --use-lora)
+  --max-samples-per-split INT                      Limit retain/forget (for fast test)
+  --out-dir DUONG_DAN                               Override the default output directory checkpoints/<model>_<tag>
   -h, --help
 
 USAGE
@@ -59,7 +58,7 @@ USAGE
 
 MAIN_PATH=""
 
-# Pass 1: tìm --config để làm mặc định trước
+# Pass 1: Look for `--config` as default
 _args=("$@")
 for ((_i = 0; _i < ${#_args[@]}; _i++)); do
     if [ "${_args[$_i]}" = "--config" ]; then
@@ -88,10 +87,10 @@ if [ -n "$CONFIG_FILE" ]; then
     echo "[train_$LOSS_FUNCTION] da nap config: $CONFIG_FILE (methods.$LOSS_FUNCTION)"
 fi
 
-# Pass 2: xử lý ghi đè giá trị từ config
+# Pass 2: handle value overrides from the config
 while [ $# -gt 0 ]; do
     case "$1" in
-        --config) shift 2 ;;  # đã xử lý ở Pass 1
+        --config) shift 2 ;;
         --model) MODEL="$2"; shift 2 ;;
         --model-path|--model_path) MODEL_PATH="$2"; shift 2 ;;
         --main-path|--main_path) MAIN_PATH="$2"; shift 2 ;;
@@ -123,24 +122,15 @@ if [ -z "$MODEL_PATH" ]; then
     MODEL_PATH="$(resolve_model_path "$MODEL")"
 fi
 
-mapfile -t RESULT_FILES < <(resolve_result_files)
-if [ -n "$MAIN_PATH" ]; then
-    MAIN_PATH="${MAIN_PATH%/}"
-    [[ "$MAIN_PATH" != /* && "$MAIN_PATH" != [A-Za-z]:* ]] && MAIN_PATH="$REPO_ROOT/$MAIN_PATH"
-    RESULT_FILES=(
-        "$MAIN_PATH/LLM_LY_results.csv"
-        "$MAIN_PATH/LLM_AT_results.csv"
-        "$MAIN_PATH/SO_LY_results.csv"
-        "$MAIN_PATH/SO_AT_results.csv"
-    )
-else
-    RESULT_FILES=(
-        "$REPO_ROOT/data/Llama3_3_Python/LLM_LY_results.csv"
-        "$REPO_ROOT/data/Llama3_3_Python/LLM_AT_results.csv"
-        "$REPO_ROOT/data/Llama3_3_Python/SO_LY_results.csv"
-        "$REPO_ROOT/data/Llama3_3_Python/SO_AT_results.csv"
-    )
-fi
+MAIN_PATH="${MAIN_PATH%/}"
+[[ "$MAIN_PATH" != /* && "$MAIN_PATH" != [A-Za-z]:* ]] && MAIN_PATH="$REPO_ROOT/$MAIN_PATH"
+RESULT_FILES=(
+    "$MAIN_PATH/LLM_LY_results.csv"
+    "$MAIN_PATH/LLM_AT_results.csv"
+    "$MAIN_PATH/SO_LY_results.csv"
+    "$MAIN_PATH/SO_AT_results.csv"
+)
+
 [ -z "$OUT_DIR" ] && OUT_DIR="$CHECKPOINTS_DIR/$(basename "$MODEL")_${SAVE_TAG}"
 
 ARGS=(
@@ -171,4 +161,4 @@ echo "[train_$LOSS_FUNCTION] \$ python ${ARGS[*]}   (cwd=$REPO_ROOT)"
 cd "$REPO_ROOT"
 "$PYTHON_BIN" "${ARGS[@]}"
 
-echo "[train_$LOSS_FUNCTION] xong -> $OUT_DIR"
+echo "[train_$LOSS_FUNCTION] DONE -> $OUT_DIR"

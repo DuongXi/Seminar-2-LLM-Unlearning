@@ -11,7 +11,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --config) CONFIG_FILE="$2"; shift 2 ;;
         --model) MODEL="$2"; shift 2 ;;
-        *) echo "tuỳ chọn không rõ: $1" >&2; exit 1 ;;
+        *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
 

@@ -37,7 +37,7 @@ if logs != "off":
 
 DATA_PATH = os.path.join(os.getcwd(), "Data", "Python")
 MODEL_PATH = os.path.join(os.getcwd(), "Models", MODEL_NAME)
-SAVE_PATH = os.path.join(os.getcwd(), "Tests", f"{MODEL_NAME}_{LANGUAGE}")
+SAVE_PATH = os.path.join(os.getcwd(), "Tests", f"{MODEL_NAME}")
 
 if not os.path.isdir(MODEL_PATH):
     raise FileNotFoundError(

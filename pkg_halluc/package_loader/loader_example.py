@@ -1,4 +1,4 @@
-"""Minimal example for loading the pre-tokenized plain datasets."""
+"""Minimal example for loading the pre-tokenized plain datasets"""
 
 from pathlib import Path
 from types import SimpleNamespace

@@ -1,4 +1,4 @@
-# Thiết lập dùng chung
+# Shared settings
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,10 +12,12 @@ export PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 export PYTORCH_ALLOC_CONF="${PYTORCH_ALLOC_CONF:-expandable_segments:True}"
 
-if command -v python3 >/dev/null 2>&1; then
-    PYTHON_BIN="python3"
-else
-    PYTHON_BIN="python"
+if [ -z "${PYTHON_BIN:-}" ]; then
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON_BIN="python3"
+    else
+        PYTHON_BIN="python"
+    fi
 fi
 
 resolve_model_name() {
@@ -25,6 +27,19 @@ from pkg_halluc.common.model_presets import resolve_model_name
 print(resolve_model_name(sys.argv[1]))
 " "$1"
 }
+
+resolve_model_suffix() {
+    local model="${1:-}"
+    local explicit="${2:-}"
+    "$PYTHON_BIN" -c "
+import sys
+from pkg_halluc.common.model_presets import resolve_model_suffix
+model = sys.argv[1] if len(sys.argv) > 1 else ''
+explicit = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
+print(resolve_model_suffix(model, explicit))
+" "$model" "$explicit"
+}
+
 
 resolve_model_path() {
     local model="$1"
