@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 
-from prompt_config import (
+from .prompt_config import (
     PACKAGE_PREFIX_1,
     PACKAGE_PREFIX_2,
     PACKAGE_SYSTEM_PROMPT_1,

@@ -47,6 +47,8 @@ def build_tri_mask_record(
     prompt_ids = tokenizer.apply_chat_template(
         messages, add_generation_prompt=True, tokenize=True
     )
+    if isinstance(prompt_ids, dict) or hasattr(prompt_ids, "input_ids"):
+        prompt_ids = prompt_ids["input_ids"]
     if isinstance(prompt_ids, torch.Tensor):
         prompt_ids = prompt_ids.squeeze().tolist()
 

@@ -72,6 +72,14 @@ def main():
             args.out_master = str(main_dir / "master_train.json")
         if not args.out_val_master and args.val_ratio > 0.0:
             args.out_val_master = str(main_dir / "master_val.json")
+        if not args.out_plain_train:
+            args.out_plain_train = str(main_dir / "plain" / f"plain_train_tok{suffix}.jsonl")
+        if not args.out_plain_val and args.val_ratio > 0.0:
+            args.out_plain_val = str(main_dir / "plain" / f"plain_val_tok{suffix}.jsonl")
+        if not args.out_plain_retain:
+            args.out_plain_retain = str(main_dir / "plain" / f"plain_retain_tok{suffix}.jsonl")
+        if not args.out_plain_forget:
+            args.out_plain_forget = str(main_dir / "plain" / f"plain_forget_tok{suffix}.jsonl")
     else:
         if not args.out_retain_tri_mask:
             args.out_retain_tri_mask = str(REPO_ROOT / "data" / "tri_mask" / f"npo_retain_tok{suffix}.jsonl")
@@ -79,6 +87,14 @@ def main():
             args.out_forget_tri_mask = str(REPO_ROOT / "data" / "tri_mask" / f"npo_forget_tok{suffix}.jsonl")
         if not args.out_val_retain_tri_mask and args.val_ratio > 0.0:
             args.out_val_retain_tri_mask = str(REPO_ROOT / "data" / "tri_mask" / f"npo_val_retain_tok{suffix}.jsonl")
+        if not args.out_plain_train:
+            args.out_plain_train = str(REPO_ROOT / "data" / "plain" / f"plain_train_tok{suffix}.jsonl")
+        if not args.out_plain_val and args.val_ratio > 0.0:
+            args.out_plain_val = str(REPO_ROOT / "data" / "plain" / f"plain_val_tok{suffix}.jsonl")
+        if not args.out_plain_retain:
+            args.out_plain_retain = str(REPO_ROOT / "data" / "plain" / f"plain_retain_tok{suffix}.jsonl")
+        if not args.out_plain_forget:
+            args.out_plain_forget = str(REPO_ROOT / "data" / "plain" / f"plain_forget_tok{suffix}.jsonl")
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -128,7 +144,7 @@ def main():
                 max_length=args.max_length,
             )
     else:
-        # Load from result_files (which should be train_csvs or pre-split files)
+        # Load from result_files
         if not args.result_files:
             raise ValueError("No master dataset or result_files provided to build_data!")
         source_df = load_csv_data(args.result_files)

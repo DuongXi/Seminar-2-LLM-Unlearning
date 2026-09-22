@@ -25,6 +25,10 @@ LORA_RANK="16"
 MAX_SAMPLES_PER_SPLIT=""
 OUT_DIR=""
 CONFIG_FILE=""
+TRAIN_FILE=""
+VAL_FILE=""
+RETAIN_FILE=""
+FORGET_FILE=""
 
 usage() {
     cat <<USAGE
@@ -33,6 +37,10 @@ Cách dùng: train_${LOSS_FUNCTION}.sh [tuỳ chọn]
                      
   --model TEN_HOAC_DUONG_DAN         Id HF or preset in models/ (default: $MODEL)
   --model-path DUONG_DAN            
+  --train-file FILE                  Path to built train dataset (plain_train_tok*.jsonl)
+  --val-file FILE                    Path to built val dataset (plain_val_tok*.jsonl)
+  --retain-file FILE                 Path to built plain retain file
+  --forget-file FILE                 Path to built plain forget file
   --save-tag TAG                      checkpoint in checkpoints/ (default: $LOSS_FUNCTION)
   --lr FLOAT                           Learning rate (default: $LR)
   --epochs INT                          Train epoch (default: $EPOCHS)
@@ -94,6 +102,10 @@ while [ $# -gt 0 ]; do
         --model) MODEL="$2"; shift 2 ;;
         --model-path|--model_path) MODEL_PATH="$2"; shift 2 ;;
         --main-path|--main_path) MAIN_PATH="$2"; shift 2 ;;
+        --train-file|--train_file) TRAIN_FILE="$2"; shift 2 ;;
+        --val-file|--val_file) VAL_FILE="$2"; shift 2 ;;
+        --retain-file|--retain_file) RETAIN_FILE="$2"; shift 2 ;;
+        --forget-file|--forget_file) FORGET_FILE="$2"; shift 2 ;;
         --save-tag) SAVE_TAG="$2"; shift 2 ;;
         --lr) LR="$2"; shift 2 ;;
         --epochs) EPOCHS="$2"; shift 2 ;;
@@ -122,14 +134,30 @@ if [ -z "$MODEL_PATH" ]; then
     MODEL_PATH="$(resolve_model_path "$MODEL")"
 fi
 
+MODEL_SUFFIX="$(resolve_model_suffix "$MODEL")"
+[ -z "$MODEL_SUFFIX" ] && MODEL_SUFFIX="$(resolve_model_suffix "$MODEL_PATH")"
+
 MAIN_PATH="${MAIN_PATH%/}"
 [[ "$MAIN_PATH" != /* && "$MAIN_PATH" != [A-Za-z]:* ]] && MAIN_PATH="$REPO_ROOT/$MAIN_PATH"
-RESULT_FILES=(
-    "$MAIN_PATH/LLM_LY_results.csv"
-    "$MAIN_PATH/LLM_AT_results.csv"
-    "$MAIN_PATH/SO_LY_results.csv"
-    "$MAIN_PATH/SO_AT_results.csv"
-)
+
+# Auto-detect built tokenized plain dataset
+if [ -z "$TRAIN_FILE" ] && [ -z "$RETAIN_FILE" ]; then
+    if [ -f "$MAIN_PATH/plain/plain_train_tok${MODEL_SUFFIX}.jsonl" ]; then
+        TRAIN_FILE="$MAIN_PATH/plain/plain_train_tok${MODEL_SUFFIX}.jsonl"
+        [ -z "$VAL_FILE" ] && [ -f "$MAIN_PATH/plain/plain_val_tok${MODEL_SUFFIX}.jsonl" ] && VAL_FILE="$MAIN_PATH/plain/plain_val_tok${MODEL_SUFFIX}.jsonl"
+    elif [ -f "$MAIN_PATH/plain/plain_retain_tok${MODEL_SUFFIX}.jsonl" ] && [ -f "$MAIN_PATH/plain/plain_forget_tok${MODEL_SUFFIX}.jsonl" ]; then
+        RETAIN_FILE="$MAIN_PATH/plain/plain_retain_tok${MODEL_SUFFIX}.jsonl"
+        FORGET_FILE="$MAIN_PATH/plain/plain_forget_tok${MODEL_SUFFIX}.jsonl"
+        [ -z "$VAL_FILE" ] && [ -f "$MAIN_PATH/plain/plain_val_tok${MODEL_SUFFIX}.jsonl" ] && VAL_FILE="$MAIN_PATH/plain/plain_val_tok${MODEL_SUFFIX}.jsonl"
+    fi
+fi
+
+if [ -z "$TRAIN_FILE" ] && { [ -z "$RETAIN_FILE" ] || [ -z "$FORGET_FILE" ]; }; then
+    echo "Error: Plain tokenized dataset is not yet available for this model!" >&2
+    echo "  Expected: $MAIN_PATH/plain/plain_train_tok${MODEL_SUFFIX}.jsonl" >&2
+    echo "  Run 'bash scripts/build_data.sh ${CONFIG_FILE:+--config "$CONFIG_FILE"} --model $MODEL' first." >&2
+    exit 1
+fi
 
 [ -z "$OUT_DIR" ] && OUT_DIR="$CHECKPOINTS_DIR/$(basename "$MODEL")_${SAVE_TAG}"
 
@@ -146,13 +174,23 @@ ARGS=(
     --seed "$SEED"
     --dtype "$DTYPE"
     --max_length "$MAX_LENGTH"
-    --result_files "${RESULT_FILES[@]}"
     --out_dir "$OUT_DIR"
     --val_ratio "$VAL_RATIO"
     --eval_steps "$EVAL_STEPS"
     --early_stopping_patience "$EARLY_STOP_PATIENCE"
     --early_stopping_threshold "$EARLY_STOP_THRESHOLD"
 )
+
+if [ -n "$RETAIN_FILE" ] && [ -n "$FORGET_FILE" ]; then
+    echo "[train_$LOSS_FUNCTION] Using plain retain/forget tokenized datasets: $RETAIN_FILE | $FORGET_FILE"
+    ARGS+=(--retain_file "$RETAIN_FILE" --forget_file "$FORGET_FILE")
+    [ -n "$VAL_FILE" ] && ARGS+=(--val_file "$VAL_FILE")
+elif [ -n "$TRAIN_FILE" ]; then
+    echo "[train_$LOSS_FUNCTION] Using plain tokenized dataset: $TRAIN_FILE"
+    ARGS+=(--train_file "$TRAIN_FILE")
+    [ -n "$VAL_FILE" ] && ARGS+=(--val_file "$VAL_FILE")
+fi
+
 [ "$DISABLE_EARLY_STOPPING" = "true" ] && ARGS+=(--disable_early_stopping)
 [ "$USE_LORA" = "true" ] && ARGS+=(--use_lora --lora_rank "$LORA_RANK")
 [ -n "$MAX_SAMPLES_PER_SPLIT" ] && ARGS+=(--max_samples_per_split "$MAX_SAMPLES_PER_SPLIT")

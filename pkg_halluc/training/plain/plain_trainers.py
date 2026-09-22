@@ -43,6 +43,9 @@ class GAPlainTrainer(Trainer):
         self.lambda_retain = lambda_retain
         self.lambda_forget = lambda_forget
         self.vocab_size = vocab_size
+        self._running_retain: list[float] = []
+        self._running_forget: list[float] = []
+        self._running_total: list[float] = []
 
     def compute_loss(self, model, inputs, return_outputs: bool = False, **kwargs: Any):
         model_inputs = {
@@ -81,6 +84,13 @@ class GAPlainTrainer(Trainer):
 
         loss = self.lambda_retain * L_retain + self.lambda_forget * L_forget
 
+        if model.training:
+            if retain_mask.any():
+                self._running_retain.append(float(L_retain.detach().cpu()))
+            if forget_mask.any():
+                self._running_forget.append(float(L_forget.detach().cpu()))
+            self._running_total.append(float(loss.detach().cpu()))
+
         step = int(self.state.global_step)
         if (
             model.training
@@ -92,6 +102,12 @@ class GAPlainTrainer(Trainer):
             ret = float(L_retain.detach().cpu())
             forg = float(L_forget.detach().cpu())
             tot = float(loss.detach().cpu())
+            ret = sum(self._running_retain) / len(self._running_retain) if self._running_retain else 0.0
+            forg = sum(self._running_forget) / len(self._running_forget) if self._running_forget else 0.0
+            tot = sum(self._running_total) / len(self._running_total) if self._running_total else float(loss.detach().cpu())
+            self._running_retain.clear()
+            self._running_forget.clear()
+            self._running_total.clear()
             self.log(
                 {
                     "loss_retain": round(ret if abs(ret) > 1e-6 else 0.0, 4),
@@ -124,6 +140,11 @@ class NPOPlainTrainer(Trainer):
         self.alpha = alpha
         self.gamma = gamma
         self.vocab_size = vocab_size
+        self._running_retain: list[float] = []
+        self._running_forget: list[float] = []
+        self._running_conf: list[float] = []
+        self._running_div: list[float] = []
+        self._running_total: list[float] = []
 
     def compute_loss(self, model, inputs, return_outputs: bool = False, **kwargs: Any):
         model_inputs = {
@@ -184,6 +205,15 @@ class NPOPlainTrainer(Trainer):
 
         loss = self.lambda_retain * L_retain + self.lambda_forget * L_forget
 
+        if model.training:
+            if retain_mask.any():
+                self._running_retain.append(float(L_retain.detach().cpu()))
+            if forget_mask.any():
+                self._running_forget.append(float(L_forget.detach().cpu()))
+                self._running_conf.append(float(forget_confidence.detach().cpu()))
+                self._running_div.append(float(forget_diversity.detach().cpu()))
+            self._running_total.append(float(loss.detach().cpu()))
+
         step = int(self.state.global_step)
         if (
             model.training
@@ -197,6 +227,16 @@ class NPOPlainTrainer(Trainer):
             conf = float(forget_confidence.detach().cpu())
             div = float(forget_diversity.detach().cpu())
             tot = float(loss.detach().cpu())
+            ret = sum(self._running_retain) / len(self._running_retain) if self._running_retain else 0.0
+            forg = sum(self._running_forget) / len(self._running_forget) if self._running_forget else 0.0
+            conf = sum(self._running_conf) / len(self._running_conf) if self._running_conf else 0.0
+            div = sum(self._running_div) / len(self._running_div) if self._running_div else 0.0
+            tot = sum(self._running_total) / len(self._running_total) if self._running_total else float(loss.detach().cpu())
+            self._running_retain.clear()
+            self._running_forget.clear()
+            self._running_conf.clear()
+            self._running_div.clear()
+            self._running_total.clear()
             self.log(
                 {
                     "loss_retain": round(ret if abs(ret) > 1e-6 else 0.0, 4),

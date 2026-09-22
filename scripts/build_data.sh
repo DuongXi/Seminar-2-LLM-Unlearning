@@ -119,8 +119,6 @@ if [ -z "$MODEL_PATH" ]; then
         MODEL_PATH="$MODELS_DIR/$MODEL"
     elif [ -d "$MODEL" ]; then
         MODEL_PATH="$MODEL"
-    else
-        MODEL_PATH="$MODEL"
     fi
 fi
 
@@ -133,6 +131,12 @@ MAIN_PATH="${MAIN_PATH%/}"
 [ -z "$OUT_FORGET_TRI_MASK" ] && OUT_FORGET_TRI_MASK="$MAIN_PATH/tri_mask/npo_forget_tok${MODEL_SUFFIX}.jsonl"
 if [ -n "$VAL_RATIO" ] && [ "$VAL_RATIO" != "0" ] && [ "$VAL_RATIO" != "0.0" ]; then
     [ -z "$OUT_VAL_RETAIN_TRI_MASK" ] && OUT_VAL_RETAIN_TRI_MASK="$MAIN_PATH/tri_mask/npo_val_retain_tok${MODEL_SUFFIX}.jsonl"
+fi
+[ -z "$OUT_PLAIN_TRAIN" ] && OUT_PLAIN_TRAIN="$MAIN_PATH/plain/plain_train_tok${MODEL_SUFFIX}.jsonl"
+[ -z "$OUT_PLAIN_RETAIN" ] && OUT_PLAIN_RETAIN="$MAIN_PATH/plain/plain_retain_tok${MODEL_SUFFIX}.jsonl"
+[ -z "$OUT_PLAIN_FORGET" ] && OUT_PLAIN_FORGET="$MAIN_PATH/plain/plain_forget_tok${MODEL_SUFFIX}.jsonl"
+if [ -n "$VAL_RATIO" ] && [ "$VAL_RATIO" != "0" ] && [ "$VAL_RATIO" != "0.0" ]; then
+    [ -z "$OUT_PLAIN_VAL" ] && OUT_PLAIN_VAL="$MAIN_PATH/plain/plain_val_tok${MODEL_SUFFIX}.jsonl"
 fi
 if [ ${#RESULT_FILES[@]} -eq 0 ]; then
     RESULT_FILES=(

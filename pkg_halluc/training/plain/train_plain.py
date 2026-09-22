@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import os
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+
 import argparse
 import json
 import random
@@ -14,7 +18,6 @@ from pkg_halluc.package_loader.unlearn_loader import PackageUnlearningDataset
 from pkg_halluc.package_loader.utils import (
     DataCollatorForUnlearning,
     infer_model,
-    load_csv_data,
 )
 from pkg_halluc.training.plain.plain_trainers import GAPlainTrainer, NPOPlainTrainer
 
@@ -55,12 +58,15 @@ def parse_args() -> argparse.Namespace:
         "--max_samples_per_split", type=int, default=None,
         help="Limit retain/forget (for fast test)",
     )
-    ap.add_argument("--result_files", nargs="+", required=True, help="result CSV")
+
+    ap.add_argument("--train_file", default=None, help="Path to built plain train dataset")
+    ap.add_argument("--val_file", default=None, help="Path to built plain val dataset")
+    ap.add_argument("--retain_file", default=None, help="Path to plain retain file")
+    ap.add_argument("--forget_file", default=None, help="Path to plain forget file")
     ap.add_argument("--out_dir", required=True)
     ap.add_argument(
         "--val_ratio", type=float, default=0.1,
-        help="Val split ratio for early stopping "
-        "",
+        help="Val split ratio for early stopping",
     )
     ap.add_argument("--eval_steps", type=int, default=25, help="Eval (and save) for N optimizer step")
     ap.add_argument("--early_stopping_patience", type=int, default=3, help="Stop after a certain number of evaluations without improvement")
@@ -89,27 +95,54 @@ def main() -> None:
     if args.use_lora:
         model = apply_lora_adapter(model, args.lora_rank)
 
-    source_df = load_csv_data(list(args.result_files))
     family = infer_model(args.model_name)
 
-    retain_ds = PackageUnlearningDataset(
-        data_source=source_df,
-        split_type="retain",
-        query_modes=[1, 2],
-        tokenizer=tok,
-        model_family=family,
-        max_length=args.max_length,
-        return_format="pointwise",
-    )
-    forget_ds = PackageUnlearningDataset(
-        data_source=source_df,
-        split_type="forget",
-        query_modes=[1, 2],
-        tokenizer=tok,
-        model_family=family,
-        max_length=args.max_length,
-        return_format="pointwise",
-    )
+    if args.retain_file and args.forget_file:
+        print(f"[train_plain] Loading from separate retain/forget files:\n  retain={args.retain_file}\n  forget={args.forget_file}")
+        retain_ds = PackageUnlearningDataset(
+            data_source=args.retain_file,
+            split_type="retain",
+            query_modes=[1, 2],
+            tokenizer=tok,
+            model_family=family,
+            max_length=args.max_length,
+            return_format="pointwise",
+        )
+        forget_ds = PackageUnlearningDataset(
+            data_source=args.forget_file,
+            split_type="forget",
+            query_modes=[1, 2],
+            tokenizer=tok,
+            model_family=family,
+            max_length=args.max_length,
+            return_format="pointwise",
+        )
+    elif args.train_file:
+        print(f"[train_plain] Loading from built train dataset: {args.train_file}")
+        retain_ds = PackageUnlearningDataset(
+            data_source=args.train_file,
+            split_type="retain",
+            query_modes=[1, 2],
+            tokenizer=tok,
+            model_family=family,
+            max_length=args.max_length,
+            return_format="pointwise",
+        )
+        forget_ds = PackageUnlearningDataset(
+            data_source=args.train_file,
+            split_type="forget",
+            query_modes=[1, 2],
+            tokenizer=tok,
+            model_family=family,
+            max_length=args.max_length,
+            return_format="pointwise",
+        )
+    else:
+        raise FileNotFoundError(
+            "Plain tokenized dataset not provided! Please specify either --train_file "
+            "or both --retain_file and --forget_file.\n"
+            "Run 'bash scripts/build_data.sh' first to build tokenized plain datasets."
+        )
 
     if args.max_samples_per_split is not None:
         retain_ds.records = retain_ds.records[: args.max_samples_per_split]
@@ -121,22 +154,20 @@ def main() -> None:
     retain_val_ds = None
     retain_train_ds = retain_ds
     if early_stopping_enabled:
-        n_val = max(1, round(len(retain_ds) * args.val_ratio))
-        if len(retain_ds) - n_val < 1:
-            print(
-                f"[train_plain] The retain set is too small ({len(retain_ds)} rows) to create a validation split. "
-                f"with val_ratio={args.val_ratio} -- turn off early stopping."
-            )
-            early_stopping_enabled = False
-        else:
-            retain_train_ds, retain_val_ds = random_split(
-                retain_ds,
-                [len(retain_ds) - n_val, n_val],
-                generator=torch.Generator().manual_seed(args.seed),
+        if args.val_file:
+            print(f"[train_plain] Loading validation split directly from built val file: {args.val_file}")
+            retain_val_ds = PackageUnlearningDataset(
+                data_source=args.val_file,
+                split_type="retain",
+                query_modes=[1, 2],
+                tokenizer=tok,
+                model_family=family,
+                max_length=args.max_length,
+                return_format="pointwise",
             )
             print(
                 f"Early stopping on: retain_train={len(retain_train_ds)} "
-                f"retain_val={len(retain_val_ds)} (val_ratio={args.val_ratio}), "
+                f"retain_val={len(retain_val_ds)} (from {args.val_file}), "
                 f"eval_steps={args.eval_steps}, patience={args.early_stopping_patience}, "
                 f"threshold={args.early_stopping_threshold}"
             )
@@ -227,7 +258,10 @@ def main() -> None:
         "vocab_size": vocab_size,
         "retain_samples": len(retain_ds),
         "forget_samples": len(forget_ds),
-        "result_files": list(args.result_files),
+        "train_file": args.train_file,
+        "val_file": args.val_file,
+        "retain_file": args.retain_file,
+        "forget_file": args.forget_file,
         "early_stopping_enabled": early_stopping_enabled,
         "retain_train_samples": len(retain_train_ds),
         "retain_val_samples": (len(retain_val_ds) if early_stopping_enabled else 0),

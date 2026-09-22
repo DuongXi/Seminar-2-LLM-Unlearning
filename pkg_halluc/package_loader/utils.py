@@ -16,14 +16,25 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
-from prompt_config import (
-    CHAT_TEMPLATES,
-    MODEL_CONFIGS,
-    PACKAGE_PREFIX_1,
-    PACKAGE_PREFIX_2,
-    PACKAGE_SYSTEM_PROMPT_1,
-    PACKAGE_SYSTEM_PROMPT_2,
-)
+
+try:
+    from .prompt_config import (
+        CHAT_TEMPLATES,
+        MODEL_CONFIGS,
+        PACKAGE_PREFIX_1,
+        PACKAGE_PREFIX_2,
+        PACKAGE_SYSTEM_PROMPT_1,
+        PACKAGE_SYSTEM_PROMPT_2,
+    )
+except ImportError:
+    from prompt_config import (
+        CHAT_TEMPLATES,
+        MODEL_CONFIGS,
+        PACKAGE_PREFIX_1,
+        PACKAGE_PREFIX_2,
+        PACKAGE_SYSTEM_PROMPT_1,
+        PACKAGE_SYSTEM_PROMPT_2,
+    )
 
 logger = logging.getLogger(__name__)
 
