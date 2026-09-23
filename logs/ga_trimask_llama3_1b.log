@@ -1,0 +1,14 @@
+Failed to load /usr/local/lib/python3.13/dist-packages/torchao/_C_cutlass_90a.abi3.so: Could not load this library: /usr/local/lib/python3.13/dist-packages/torchao/_C_cutlass_90a.abi3.so
+Failed to load /usr/local/lib/python3.13/dist-packages/torchao/_C_mxfp8.cpython-310-x86_64-linux-gnu.so: Could not load this library: /usr/local/lib/python3.13/dist-packages/torchao/_C_mxfp8.cpython-310-x86_64-linux-gnu.so
+/content/models/Llama-3.2-1B-Instruct_ga
+Detected LoRA adapter at /content/models/Llama-3.2-1B-Instruct_ga
+Loading base model from /content/drive/.shortcut-targets-by-id/15L--7q2Jid-f2t4ZAc7071Owi6cRA02K/Package_Unlearning_Project/Code/data_train_merge/models/meta-llama/Llama-3.2-1B-Instruct ...
+Loading weights: 100% 146/146 [00:12<00:00, 12.15it/s]
+LoRA adapter merged into base model.
+100% 2862/2862 [06:40<00:00,  7.15batch/s]
+Forget dataset PPL: 27.9375
+Forget dataset Acc: 49.7033805847168
+scanning:   0% 0/2862 [00:00<?, ?it/s]/content/classical.py:119: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  k: torch.tensor(v).unsqueeze(0).to(model.device)
+scanning: 100% 2862/2862 [06:56<00:00,  6.87it/s]
+/content/data/Llama3_1B/tri_mask/npo_forget_tok_llama_1B.jsonl forget  NLL=1.8653  PPL=6.4580  ACC=67.1686%

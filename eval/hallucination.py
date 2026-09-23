@@ -52,28 +52,57 @@ GENERIC_FRAMEWORKS = _load_words("./eval.json", "frameworks")
 LEGIT_PKGS         = _load_words("./eval.json", "legitimate_packages")
 FUNC_PREFIXES      = _load_words("./eval.json", "func_prefixes")
 
+MODE1_SYSTEM = (
+    "You are a coding assistant that determines Python packages "
+    "necessary to execute code. Respond with only a list of Python "
+    "packages, separated by commas and no additional text or formatting. "
+    "Your response must begin with the name of a Python package."
+)
+MODE2_SYSTEM = (
+    "You are a coding assistant that recommends Python packages that "
+    "would be helpful to solve given problems. Respond with only a list "
+    "of Python packages, separated by commas and no additional text or "
+    "formatting. Your response must begin with the name of a Python package."
+)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Query prefixes
-# ─────────────────────────────────────────────────────────────────────────────
-MODE1_PREFIXES = [
-    "You are a coding assistant that determines Python packages necessary to execute code. "
-    ,"Respond with only a list of Python packages, separated by commas and no additional text or formatting. "
-    ,"Your response must begin with the name of a Python package."
-    ,"Which Python packages are required to run this code:"
+MODE1_QUESTIONS = [
+    "Which Python packages are required to run this code: ",
+    "What packages does this code depend on: ",
+    "Name the Python packages this code imports: ",
+    "List the pip packages needed to run this code: ",
+    "What are the package requirements for this code: ",
+    "Identify the Python packages used by this code: ",
+    "Which packages must be installed to execute this code: ",
+    "What third-party packages does this code use: ",
+    "Tell me the package dependencies for this code: ",
+    "What packages would I need to pip install for this code: ",
 ]
 
-MODE2_PREFIXES = [
-    "You are a coding assistant that recommends Python packages that would be helpful to solve given problems. "
-    ,"Respond with only a list of Python packages, separated by commas and no additional text or formatting. "
-    ,"Your response must begin with the name of a Python package."
-    ,"What Python packages would be useful in solving the following coding problem:"
+MODE2_QUESTIONS = [
+    "What Python packages would be useful in solving the following coding problem: ",
+    "Which packages could help solve this problem: ",
+    "Name some Python packages relevant to this task: ",
+    "What packages should I consider for this problem: ",
+    "Which Python packages are appropriate for this problem: ",
+    "What packages would you recommend for this task: ",
+    "Suggest Python packages that could help with this problem: ",
+    "What packages would be beneficial for this coding problem: ",
+    "Which Python packages are well-suited to this problem: ",
+    "What Python packages would assist with the following task: ",
 ]
 
-
-def get_random_prefix(mode: int) -> str:
-    return random.choice(MODE1_PREFIXES if mode == 1 else MODE2_PREFIXES)
-
+def build_messages(mode, sample):
+    if mode == 1:
+        system = MODE1_SYSTEM
+        prefix = random.choice(MODE1_QUESTIONS)
+    else:
+        system = MODE2_SYSTEM
+        prefix = random.choice(MODE2_QUESTIONS)
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user",   "content": prefix + sample},
+    ]
+    return messages, prefix
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Text / package extraction helpers
@@ -363,8 +392,8 @@ def generate_packages(mode, master_file, outfile,
 
     with open(outfile, "w", encoding="utf-8") as output:
         for sample in tqdm(samples, desc=f"Mode {mode}", unit="sample"):
-            prefix = get_random_prefix(mode)
-            messages = [{"role": "user", "content": prefix + sample}]
+            messages, prefix = build_messages(mode, sample)
+
             inputs = tokenizer.apply_chat_template(
                 messages, add_generation_prompt=True, return_tensors="pt"
             ).to(model.device)
@@ -386,10 +415,12 @@ def generate_packages(mode, master_file, outfile,
                 response = extract_final_response(response)
 
             json.dump({
-                "prefix": prefix,
-                "input": sample,
-                "full_prompt": prefix + sample,
-                "response": response,
+                "mode":        mode,
+                "system":      messages[0]["content"],
+                "prefix":      prefix,
+                "input":       sample,
+                "full_prompt": messages[1]["content"],
+                "response":    response,
             }, output)
             output.write("\n")
 

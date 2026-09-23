@@ -1,2 +1,5 @@
 models/*
 temp/*
+logs/base_llama3_1b
+logs/npo_trimask_llama3_1b
+logs/ga_trimask_llama3_1b

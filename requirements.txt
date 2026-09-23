@@ -2,3 +2,4 @@ torch
 transformers 
 dataset 
 evalplus
+torchao>=0.16.0 # Optional component, uninstall if need be
