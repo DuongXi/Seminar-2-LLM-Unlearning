@@ -136,8 +136,8 @@ fi
 ARGS=(
     -m pkg_halluc.training.tri_mask.train_tri_mask
     --model-path "$MODEL_PATH"
-    --retain-file "$RETAIN_FILE"
-    --forget-file "$FORGET_FILE"
+    --retain_file "$RETAIN_FILE"
+    --forget_file "$FORGET_FILE"
     --output-dir "$OUT_DIR"
     --cache-dir "$MODELS_DIR/cache"
     --loss_function "$LOSS_FUNCTION"

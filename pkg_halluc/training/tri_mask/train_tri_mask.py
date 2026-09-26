@@ -108,20 +108,6 @@ def main():
     print("Model loaded!")
 
 
-    if "DeepSeek-Coder-V2-Lite-Instruct" in args.model_path and not args.resume_from_checkpoint:
-        frozen_count = 0
-        frozen_params = 0
-        for name, param in model.named_parameters():
-            if ".mlp.gate." in name and ".experts." not in name:
-                param.requires_grad = False
-                frozen_count += 1
-                frozen_params += param.numel()
-
-        assert frozen_count > 0, (
-            f""
-            f""
-        )
-
     if args.use_lora:
         print(f"Applying LoRA with rank={args.lora_rank} ...")
         model = apply_lora(model, lora_rank=args.lora_rank)

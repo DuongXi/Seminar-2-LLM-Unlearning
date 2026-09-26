@@ -53,48 +53,47 @@ def main():
     args = ap.parse_args()
 
     suffix = resolve_model_suffix(args.model_path)
-    if args.main_path:
-        main_dir = Path(args.main_path)
-        if not args.result_files:
+    main_dir = Path(args.main_path) if args.main_path else (REPO_ROOT / "data")
+    split_dir = main_dir / "train_test_split"
+    train_csv_dir = split_dir / "train_csvs"
+
+    if not args.result_files:
+        if train_csv_dir.is_dir() and any(train_csv_dir.glob("*_train.csv")):
+            args.result_files = [str(p) for p in sorted(train_csv_dir.glob("*_train.csv"))]
+        else:
             args.result_files = [
                 str(main_dir / "LLM_LY_results.csv"),
                 str(main_dir / "LLM_AT_results.csv"),
                 str(main_dir / "SO_LY_results.csv"),
                 str(main_dir / "SO_AT_results.csv"),
             ]
-        if not args.out_retain_tri_mask:
-            args.out_retain_tri_mask = str(main_dir / "tri_mask" / f"npo_retain_tok{suffix}.jsonl")
-        if not args.out_forget_tri_mask:
-            args.out_forget_tri_mask = str(main_dir / "tri_mask" / f"npo_forget_tok{suffix}.jsonl")
-        if not args.out_val_retain_tri_mask and args.val_ratio > 0.0:
-            args.out_val_retain_tri_mask = str(main_dir / "tri_mask" / f"npo_val_retain_tok{suffix}.jsonl")
-        if not args.out_master:
+    if not args.out_retain_tri_mask:
+        args.out_retain_tri_mask = str(main_dir / "tri_mask" / f"npo_retain_tok{suffix}.jsonl")
+    if not args.out_forget_tri_mask:
+        args.out_forget_tri_mask = str(main_dir / "tri_mask" / f"npo_forget_tok{suffix}.jsonl")
+    if not args.out_val_retain_tri_mask and (args.val_ratio > 0.0 or (split_dir / "master_val.json").is_file()):
+        args.out_val_retain_tri_mask = str(main_dir / "tri_mask" / f"npo_val_retain_tok{suffix}.jsonl")
+    if not args.out_master:
+        if (split_dir / "master_train.json").is_file():
+            args.out_master = str(split_dir / "master_train.json")
+        else:
             args.out_master = str(main_dir / "master_train.json")
-        if not args.out_val_master and args.val_ratio > 0.0:
+        
             args.out_val_master = str(main_dir / "master_val.json")
-        if not args.out_plain_train:
-            args.out_plain_train = str(main_dir / "plain" / f"plain_train_tok{suffix}.jsonl")
-        if not args.out_plain_val and args.val_ratio > 0.0:
-            args.out_plain_val = str(main_dir / "plain" / f"plain_val_tok{suffix}.jsonl")
-        if not args.out_plain_retain:
-            args.out_plain_retain = str(main_dir / "plain" / f"plain_retain_tok{suffix}.jsonl")
-        if not args.out_plain_forget:
-            args.out_plain_forget = str(main_dir / "plain" / f"plain_forget_tok{suffix}.jsonl")
-    else:
-        if not args.out_retain_tri_mask:
-            args.out_retain_tri_mask = str(REPO_ROOT / "data" / "tri_mask" / f"npo_retain_tok{suffix}.jsonl")
-        if not args.out_forget_tri_mask:
-            args.out_forget_tri_mask = str(REPO_ROOT / "data" / "tri_mask" / f"npo_forget_tok{suffix}.jsonl")
-        if not args.out_val_retain_tri_mask and args.val_ratio > 0.0:
-            args.out_val_retain_tri_mask = str(REPO_ROOT / "data" / "tri_mask" / f"npo_val_retain_tok{suffix}.jsonl")
-        if not args.out_plain_train:
-            args.out_plain_train = str(REPO_ROOT / "data" / "plain" / f"plain_train_tok{suffix}.jsonl")
-        if not args.out_plain_val and args.val_ratio > 0.0:
-            args.out_plain_val = str(REPO_ROOT / "data" / "plain" / f"plain_val_tok{suffix}.jsonl")
-        if not args.out_plain_retain:
-            args.out_plain_retain = str(REPO_ROOT / "data" / "plain" / f"plain_retain_tok{suffix}.jsonl")
-        if not args.out_plain_forget:
-            args.out_plain_forget = str(REPO_ROOT / "data" / "plain" / f"plain_forget_tok{suffix}.jsonl")
+    if not args.out_val_master:
+        if (split_dir / "master_val.json").is_file():
+            args.out_val_master = str(split_dir / "master_val.json")
+        elif args.val_ratio > 0.0:
+            args.out_val_master = str(main_dir / "master_val.json")
+
+    if not args.out_plain_train:
+        args.out_plain_train = str(main_dir / "plain" / f"plain_train_tok{suffix}.jsonl")
+    if not args.out_plain_val and (args.val_ratio > 0.0 or (split_dir / "master_val.json").is_file()):
+        args.out_plain_val = str(main_dir / "plain" / f"plain_val_tok{suffix}.jsonl")
+    if not args.out_plain_retain:
+        args.out_plain_retain = str(main_dir / "plain" / f"plain_retain_tok{suffix}.jsonl")
+    if not args.out_plain_forget:
+        args.out_plain_forget = str(main_dir / "plain" / f"plain_forget_tok{suffix}.jsonl")
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)

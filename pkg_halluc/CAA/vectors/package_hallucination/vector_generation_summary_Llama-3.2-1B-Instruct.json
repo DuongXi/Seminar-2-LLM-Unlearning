@@ -1,0 +1,31 @@
+{
+  "model_preset": "llama3.2-1b",
+  "model_id": "meta-llama/Llama-3.2-1B-Instruct",
+  "model_suffix": "Llama-3.2-1B-Instruct",
+  "dataset_path": "CAA/datasets/generate/package_hallucination/generate_dataset_shuffled.json",
+  "token_position": "last_token",
+  "num_samples": 2,
+  "target_layers": [
+    0,
+    1,
+    2
+  ],
+  "all_layers_file": "CAA/vectors/package_hallucination\\all_layers_steering_vectors_Llama-3.2-1B-Instruct.pt",
+  "layer_stats": {
+    "0": {
+      "norm": 29.78902244567871,
+      "cosine_similarity_truthful_vs_hallu": 0.504671573638916,
+      "save_path": "CAA/vectors/package_hallucination\\vec_layer_0_Llama-3.2-1B-Instruct.pt"
+    },
+    "1": {
+      "norm": 44.82018280029297,
+      "cosine_similarity_truthful_vs_hallu": 0.5086088180541992,
+      "save_path": "CAA/vectors/package_hallucination\\vec_layer_1_Llama-3.2-1B-Instruct.pt"
+    },
+    "2": {
+      "norm": 35.01112747192383,
+      "cosine_similarity_truthful_vs_hallu": 0.5109279155731201,
+      "save_path": "CAA/vectors/package_hallucination\\vec_layer_2_Llama-3.2-1B-Instruct.pt"
+    }
+  }
+}

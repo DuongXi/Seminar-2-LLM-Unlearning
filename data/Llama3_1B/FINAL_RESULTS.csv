@@ -1,0 +1,6 @@
+,valid_1,hallucinated_1,valid_2,hallucinated_2,pip_valid,pip_hallucinated
+LLM_LY,2568,5812,3304,3653,16,4
+LLM_AT,2619,4670,3067,6041,10,3
+SO_LY,2431,3573,2690,7397,11,1
+SO_AT,3077,3092,3400,4735,10,1
+Totals,10695,17147,12461,21826,47,9

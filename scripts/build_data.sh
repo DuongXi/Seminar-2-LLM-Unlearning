@@ -127,9 +127,26 @@ MODEL_SUFFIX="$(resolve_model_suffix "$MODEL")"
 
 MAIN_PATH="${MAIN_PATH%/}"
 [[ "$MAIN_PATH" != /* && "$MAIN_PATH" != [A-Za-z]:* ]] && MAIN_PATH="$REPO_ROOT/$MAIN_PATH"
+
+SPLIT_DIR="$MAIN_PATH/train_test_split"
+if [ -d "$SPLIT_DIR" ]; then
+    [ -z "$OUT_MASTER" ] && [ -f "$SPLIT_DIR/master_train.json" ] && OUT_MASTER="$SPLIT_DIR/master_train.json"
+    [ -z "$OUT_VAL_MASTER" ] && [ -f "$SPLIT_DIR/master_val.json" ] && OUT_VAL_MASTER="$SPLIT_DIR/master_val.json"
+    if [ ${#RESULT_FILES[@]} -eq 0 ] && [ -d "$SPLIT_DIR/train_csvs" ]; then
+        RESULT_FILES=(
+            "$SPLIT_DIR/train_csvs/LLM_LY_results_train.csv"
+            "$SPLIT_DIR/train_csvs/LLM_AT_results_train.csv"
+            "$SPLIT_DIR/train_csvs/SO_LY_results_train.csv"
+            "$SPLIT_DIR/train_csvs/SO_AT_results_train.csv"
+        )
+    fi
+fi
+
 [ -z "$OUT_RETAIN_TRI_MASK" ] && OUT_RETAIN_TRI_MASK="$MAIN_PATH/tri_mask/npo_retain_tok${MODEL_SUFFIX}.jsonl"
 [ -z "$OUT_FORGET_TRI_MASK" ] && OUT_FORGET_TRI_MASK="$MAIN_PATH/tri_mask/npo_forget_tok${MODEL_SUFFIX}.jsonl"
 if [ -n "$VAL_RATIO" ] && [ "$VAL_RATIO" != "0" ] && [ "$VAL_RATIO" != "0.0" ]; then
+    [ -z "$OUT_VAL_RETAIN_TRI_MASK" ] && OUT_VAL_RETAIN_TRI_MASK="$MAIN_PATH/tri_mask/npo_val_retain_tok${MODEL_SUFFIX}.jsonl"
+elif [ -f "$SPLIT_DIR/master_val.json" ]; then
     [ -z "$OUT_VAL_RETAIN_TRI_MASK" ] && OUT_VAL_RETAIN_TRI_MASK="$MAIN_PATH/tri_mask/npo_val_retain_tok${MODEL_SUFFIX}.jsonl"
 fi
 [ -z "$OUT_PLAIN_TRAIN" ] && OUT_PLAIN_TRAIN="$MAIN_PATH/plain/plain_train_tok${MODEL_SUFFIX}.jsonl"
@@ -137,7 +154,10 @@ fi
 [ -z "$OUT_PLAIN_FORGET" ] && OUT_PLAIN_FORGET="$MAIN_PATH/plain/plain_forget_tok${MODEL_SUFFIX}.jsonl"
 if [ -n "$VAL_RATIO" ] && [ "$VAL_RATIO" != "0" ] && [ "$VAL_RATIO" != "0.0" ]; then
     [ -z "$OUT_PLAIN_VAL" ] && OUT_PLAIN_VAL="$MAIN_PATH/plain/plain_val_tok${MODEL_SUFFIX}.jsonl"
+elif [ -f "$SPLIT_DIR/master_val.json" ]; then
+    [ -z "$OUT_PLAIN_VAL" ] && OUT_PLAIN_VAL="$MAIN_PATH/plain/plain_val_tok${MODEL_SUFFIX}.jsonl"
 fi
+
 if [ ${#RESULT_FILES[@]} -eq 0 ]; then
     RESULT_FILES=(
         "$MAIN_PATH/LLM_LY_results.csv"
