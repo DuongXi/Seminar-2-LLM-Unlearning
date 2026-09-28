@@ -1,5 +1,4 @@
-"""Sinh code cho từng prompt bằng model cần đánh giá (bước 1 của eval)."""
-# Tri-mask: file lấy từ paper Adaptive Unlearning (đã trim/sửa nhẹ)
+"""Generate code for each evaluation prompt."""
 import json
 
 import pandas as pd
@@ -38,7 +37,7 @@ def generate_code(
             [{"role": "user", "content": prompt}] for prompt in batch_prompts
         ]
 
-        # Tokenize cả batch, có padding
+        # Tokenize the batch with padding.
         inputs = tokenizer.apply_chat_template(
             messages_batch,
             add_generation_prompt=True,
@@ -63,7 +62,7 @@ def generate_code(
             repetition_penalty=1,
         )
 
-        # Giải mã từng output trong batch
+        # Decode each generated output.
         for j, output_seq in enumerate(outputs.sequences):
             prompt_length = inputs.shape[1]
             generated_code = tokenizer.decode(
@@ -74,7 +73,7 @@ def generate_code(
 
             results.append(generated_code)
 
-    # Ghi toàn bộ kết quả ra file
+    # Write all generated results.
     with open(outfile, "w", newline="", encoding="utf-8") as output:
         for result in results:
             json.dump(result, output)
@@ -82,7 +81,7 @@ def generate_code(
 
 
 def extract_final_response(text):
-    """Lấy phần trả lời sau thẻ </think> của reasoning model, không có thẻ thì giữ nguyên."""
+    """Return the text after a reasoning model's </think> tag, or the full text if absent."""
     think_end = text.find("</think>")
 
     if think_end != -1:

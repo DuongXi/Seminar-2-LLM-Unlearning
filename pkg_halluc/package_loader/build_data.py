@@ -2,26 +2,15 @@
 Generate training data using package_loader
 """
 from __future__ import annotations
-
 import argparse
 import json
-import sys
 from pathlib import Path
-import random
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-import torch
-from pkg_halluc.common.model_setup import build_model
-from pkg_halluc.common.model_presets import MODEL_PRESETS, resolve_model_suffix
-
-from pkg_halluc.package_loader.generate_tri_mask import (
-    generate_tri_mask_dataset,
-)
-from pkg_halluc.package_loader.unlearn_loader import PackageUnlearningDataset
-from pkg_halluc.package_loader.utils import (
+from pkg_halluc.common.model_setup import apply_hf_token
+from pkg_halluc.common.model_presets import resolve_model_name, resolve_model_suffix
+from .generate_tri_mask import generate_tri_mask_dataset
+from .unlearn_loader import PackageUnlearningDataset
+from .utils import (
     infer_model,
     load_csv_data,
     is_preprocessed,
@@ -33,10 +22,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--model_path", required=True, help="HF model name or path")
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--dtype", default="bfloat16", choices=["bfloat16", "float16", "float32", "auto"])
-    ap.add_argument("--device_map", default="auto")
     ap.add_argument("--max_length", type=int, default=2048)
-    ap.add_argument("--main_path", default="", help="Path to model data directory (from model_config)")
+    ap.add_argument("--main_path", required=True, help="Path to the model data directory")
     ap.add_argument("--result_files", nargs="*", default=[])
     ap.add_argument("--out_master", default="")
     ap.add_argument("--out_val_master", default="", help="Path to save held-out validation master records (pre-tri-mask)")
@@ -50,23 +37,26 @@ def main():
     ap.add_argument("--out_plain_retain", default="", help="Path to save pre-tri-mask tokenized retain records")
     ap.add_argument("--out_plain_forget", default="", help="Path to save pre-tri-mask tokenized forget records")
     ap.add_argument("--max_train_samples_per_split", type=int, default=None, help="Cap samples per split for smoke test")
+    ap.add_argument(
+        "--contrastive",
+        nargs="?",
+        const="true",
+        choices=("true", "false"),
+        default="false",
+        type=str.lower,
+        help="Build contrastive data for CAA",
+    )
+    ap.add_argument("--contrastive_num_shuffles", type=int, default=2, help="Number of shuffled permutations per sample for contrastive dataset (default: 2)")
     args = ap.parse_args()
 
     suffix = resolve_model_suffix(args.model_path)
-    main_dir = Path(args.main_path) if args.main_path else (REPO_ROOT / "data")
+    main_dir = Path(args.main_path)
     split_dir = main_dir / "train_test_split"
     train_csv_dir = split_dir / "train_csvs"
 
     if not args.result_files:
         if train_csv_dir.is_dir() and any(train_csv_dir.glob("*_train.csv")):
             args.result_files = [str(p) for p in sorted(train_csv_dir.glob("*_train.csv"))]
-        else:
-            args.result_files = [
-                str(main_dir / "LLM_LY_results.csv"),
-                str(main_dir / "LLM_AT_results.csv"),
-                str(main_dir / "SO_LY_results.csv"),
-                str(main_dir / "SO_AT_results.csv"),
-            ]
     if not args.out_retain_tri_mask:
         args.out_retain_tri_mask = str(main_dir / "tri_mask" / f"npo_retain_tok{suffix}.jsonl")
     if not args.out_forget_tri_mask:
@@ -74,17 +64,12 @@ def main():
     if not args.out_val_retain_tri_mask and (args.val_ratio > 0.0 or (split_dir / "master_val.json").is_file()):
         args.out_val_retain_tri_mask = str(main_dir / "tri_mask" / f"npo_val_retain_tok{suffix}.jsonl")
     if not args.out_master:
-        if (split_dir / "master_train.json").is_file():
-            args.out_master = str(split_dir / "master_train.json")
-        else:
-            args.out_master = str(main_dir / "master_train.json")
-        
-            args.out_val_master = str(main_dir / "master_val.json")
+        args.out_master = str(split_dir / "master_train.json")
     if not args.out_val_master:
         if (split_dir / "master_val.json").is_file():
             args.out_val_master = str(split_dir / "master_val.json")
         elif args.val_ratio > 0.0:
-            args.out_val_master = str(main_dir / "master_val.json")
+            args.out_val_master = str(split_dir / "master_val.json")
 
     if not args.out_plain_train:
         args.out_plain_train = str(main_dir / "plain" / f"plain_train_tok{suffix}.jsonl")
@@ -95,18 +80,11 @@ def main():
     if not args.out_plain_forget:
         args.out_plain_forget = str(main_dir / "plain" / f"plain_forget_tok{suffix}.jsonl")
 
-    random.seed(args.seed)
-    torch.manual_seed(args.seed)
-
-    model, tok = build_model(
-        model_name_or_path=args.model_path,
-        dtype=args.dtype,
-        device_map=args.device_map,
+    apply_hf_token()
+    tok = setup_tokenizer(
+        resolve_model_name(args.model_path),
+        model_family=infer_model(args.model_path),
     )
-    model.eval()
-    resolved_path = MODEL_PRESETS.get(args.model_path, args.model_path)
-    tok = setup_tokenizer(resolved_path)
-
     out_master_path = Path(args.out_master) if args.out_master else None
     out_val_master_path = Path(args.out_val_master) if args.out_val_master else None
 
@@ -241,7 +219,7 @@ def main():
     val_info = f" | {len(val_retain_tri_mask_records)} val_retain" if val_retain_tri_mask_records else ""
     print(f"Tri-mask records saved: {len(retain_tri_mask_records)} retain | {len(forget_tri_mask_records)} forget{val_info}")
 
-    # Save pre-tri-mask pointwise tokenized datasets (sample_id, split_type, mode, input_ids, attention_mask, labels)
+    # Save pre-tri-mask pointwise tokenized datasets
     target_train_ds = train_ds if (reusing_master or args.val_ratio > 0.0) else unlearn_ds
     target_val_ds = val_ds if (reusing_master or args.val_ratio > 0.0) else None
 
@@ -260,11 +238,33 @@ def main():
         save_tokenized_records(target_val_ds.records, args.out_plain_val, tokenizer=tok, max_length=args.max_length)
 
     if args.out_plain_test:
-        test_file = Path(args.out_master).parent / "master_test.json" if args.out_master else None
-        if test_file and test_file.is_file():
-            test_ds = PackageUnlearningDataset(str(test_file), split_type="all", tokenizer=tok, max_length=args.max_length)
-            save_tokenized_records(test_ds.records, args.out_plain_test, tokenizer=tok, max_length=args.max_length)
+        test_file = split_dir / "master_test.json"
+        if not test_file.is_file():
+            raise FileNotFoundError(f"Test master dataset not found: {test_file}")
+        test_ds = PackageUnlearningDataset(str(test_file), split_type="all", tokenizer=tok, max_length=args.max_length)
+        save_tokenized_records(test_ds.records, args.out_plain_test, tokenizer=tok, max_length=args.max_length)
 
+    if args.contrastive == "true":
+        print("Building CAA contrastive train/test pairwise datasets...")
+        from pkg_halluc.package_loader.generate_contrastive_data import generate_contrastive_dataset
+
+        contrastive_out_dir = main_dir / "contrastive"
+        contrastive_train_input = split_dir / "master_train.json"
+        master_test_path = split_dir / "master_test.json"
+        if not contrastive_train_input.is_file():
+            raise FileNotFoundError(f"CAA train master dataset not found: {contrastive_train_input}")
+        if not master_test_path.is_file():
+            raise FileNotFoundError(f"CAA test master dataset not found: {master_test_path}")
+
+        generate_contrastive_dataset(
+            train_input=contrastive_train_input,
+            test_input=master_test_path,
+            output_base_dirs=[contrastive_out_dir],
+            num_shuffles_per_sample=args.contrastive_num_shuffles,
+            seed=args.seed,
+            test_include_shuffles=False,
+        )
+        print(f"CAA pairwise datasets generated at: {contrastive_out_dir}")
 
 if __name__ == "__main__":
     main()

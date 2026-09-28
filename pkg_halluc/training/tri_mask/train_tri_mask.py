@@ -94,7 +94,7 @@ def main():
                 args.model_path, token=hf_token, cache_dir=cache_dir
             )
     else:
-        print(f"Đang load model từ {args.model_path}...")
+        print(f"Loading model from {args.model_path}...")
         model = AutoModelForCausalLM.from_pretrained(
             args.model_path,
             token=hf_token,
@@ -158,7 +158,7 @@ def main():
         pad_token_id=tokenizer.pad_token_id, label_pad_id=-100
     )
 
-    # Đếm số token ignore/retain/forget
+    # Count ignored, retained, and forgotten tokens.
     def count_tri_mask_tokens(ds: Dataset) -> Tuple[int, int, int]:
         n0 = n1 = n2 = 0
         for ex in ds:
@@ -172,7 +172,7 @@ def main():
     print(f"Token train – ignore:{n0_tr} retain:{n1_tr} forget:{n2_tr}")
     print(f" Token eval – ignore:{n0_ev} retain:{n1_ev} forget:{n2_ev}")
 
-    # Chỉ report wandb khi được bật
+    # Report to W&B only when enabled.
     report_to = ["tensorboard"]
     if args.use_wandb:
         report_to.append("wandb")

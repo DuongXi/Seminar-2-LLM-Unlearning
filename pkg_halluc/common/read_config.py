@@ -1,4 +1,4 @@
-"""Đọc file config JSON và in ra các biến shell CFG_<KEY> (scripts/common.sh dùng)"""
+"""Read JSON config values and print CFG_<KEY> shell variables for scripts/common.sh."""
 from __future__ import annotations
 
 import argparse

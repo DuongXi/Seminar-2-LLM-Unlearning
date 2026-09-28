@@ -1,5 +1,4 @@
-"""Hỏi model tên package cần dùng cho từng mẫu (bước 2 của eval, mode 1 và 2)."""
-# Tri-mask: file lấy từ paper Adaptive Unlearning (đã trim/sửa nhẹ)
+"""Ask the model which packages to use for each sample in query modes 1 and 2."""
 import json
 
 import pandas as pd
@@ -78,7 +77,7 @@ def generate_packages(
 
 
 def extract_final_response(text):
-    """Lấy phần trả lời sau thẻ </think> của reasoning model, không có thẻ thì giữ nguyên."""
+    """Return the text after a reasoning model's </think> tag, or the full text if absent."""
     think_end = text.find("</think>")
 
     if think_end != -1:

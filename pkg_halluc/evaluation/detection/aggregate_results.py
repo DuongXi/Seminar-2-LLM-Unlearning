@@ -1,10 +1,9 @@
-"""Gộp prompt, code, response package và tính tổng số package valid/hallucinated."""
-# Tri-mask: file lấy từ paper Adaptive Unlearning (đã trim/sửa nhẹ)
+"""Combine prompts, code, and package responses and count valid/hallucinated packages."""
 import pandas as pd
 
 
 def combine_code_and_prompt(infile1, infile2, outfile):
-    """Ghép file prompt và file code thành master (cột Prompts, Answers)."""
+    """Combine prompt and code files into a master dataset with Prompts and Answers columns."""
     prompts = pd.read_json(infile1, lines=True)
     code = pd.read_json(infile2, lines=True)
 
@@ -14,7 +13,7 @@ def combine_code_and_prompt(infile1, infile2, outfile):
 
 
 def combine_SO_prompt_and_code(infile1, infile2, outfile):
-    """Ghép câu hỏi Stack Overflow và code thành master (cột Questions, Answers)."""
+    """Combine Stack Overflow questions and code into a master dataset."""
     data1 = pd.read_json(infile1, lines=True)
     data2 = pd.read_json(infile2, lines=True)
 
@@ -25,7 +24,7 @@ def combine_SO_prompt_and_code(infile1, infile2, outfile):
 
 
 def sum_columns(df, index_name, language):
-    """Tổng số package valid/hallucinated theo từng cột của DataFrame kết quả."""
+    """Count valid and hallucinated packages in each results DataFrame column."""
     totals = pd.DataFrame(index=[f"{index_name}"])
     totals["valid_1"] = df["valid_1"].apply(len).sum()
     totals["hallucinated_1"] = df["hallucinated_1"].apply(len).sum()
@@ -42,7 +41,7 @@ def sum_columns(df, index_name, language):
 
 
 def merge_prompts_and_packages(prompt_file, query1, query2):
-    """Gộp master với response package của mode 1, 2 thành các cột Test_1, Test_2."""
+    """Merge package responses for modes 1 and 2 into Test_1 and Test_2 columns."""
     prompts = pd.read_json(prompt_file, lines=True)
     responses1 = pd.read_json(query1, lines=True)
     responses2 = pd.read_json(query2, lines=True)

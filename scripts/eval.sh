@@ -1,4 +1,4 @@
-# Eval package hallucination của 1 checkpoint, dùng chung cho mọi method (pkg_halluc/evaluation/eval_variant.py)
+# Evaluate one checkpoint for package hallucination across supported methods.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,25 +17,24 @@ EXTRA_ARGS=()
 
 usage() {
     cat <<USAGE
-Cách dùng: eval.sh --tag TAG --model-path PATH [optional]
-  --config FILE                 File config JSON (e.g. model_config/default.json)
-  --tag TAG                    method to name result file, e.g. base/ga/npo/ga_plain/npo_plain (mandatory)
-  --model-path PATH        Checkpoint that needs eval (mandatory)
-  --n-prompts INT                 Number of prompts sampled from the evaluation pool (default: $N_PROMPTS)
-  --batch-size INT                 (default: $BATCH_SIZE)
-  --seed INT                        (default: $SEED)
-  --package-modes "1 2"              Run the mode in which package (default: "$PACKAGE_MODES")
-  --eval-prompts-path PATH        
-  --out-dir PATH                   (default: $EVAL_RUNS_DIR/<tag>)
-  -- PARAMS...                      
-                                          
+Usage: eval.sh --tag TAG --model-path PATH [options]
+    --config FILE                    JSON configuration file (e.g. model_config/default.json)
+    --tag TAG                        Result label, e.g. base, ga, npo, ga_plain, or npo_plain (required)
+    --model-path PATH                Checkpoint to evaluate (required)
+    --n-prompts INT                  Evaluation prompts to sample (default: $N_PROMPTS)
+    --batch-size INT                 Batch size (default: $BATCH_SIZE)
+    --seed INT                       Random seed (default: $SEED)
+    --package-modes "1 2"             Package query modes (default: "$PACKAGE_MODES")
+    --eval-prompts-path PATH         Custom evaluation prompt file
+    --out-dir PATH                   Output directory (default: $EVAL_RUNS_DIR/<tag>)
+    -- PARAMS...                     Additional arguments for eval_variant.py
   -h, --help
 
 USAGE
     exit "${1:-0}"
 }
 
-# Pass 1: Look for `--config` as default
+# Read the config path before loading config-derived defaults.
 _args=("$@")
 for ((_i = 0; _i < ${#_args[@]}; _i++)); do
     if [ "${_args[$_i]}" = "--config" ]; then
@@ -53,7 +52,7 @@ if [ -n "$CONFIG_FILE" ]; then
     echo "Config set: $CONFIG_FILE (eval)"
 fi
 
-# Pass 2: handle value overrides from the config
+# Apply command-line overrides.
 while [ $# -gt 0 ]; do
     case "$1" in
         --config) shift 2 ;; 

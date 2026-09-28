@@ -1,50 +1,45 @@
-# Dataset & DataLoader
+# Dataset and DataLoader
 
-Thư mục `package_loader` chứa pipeline data preprocessing, chia tách tập dữ liệu, chuẩn hóa file, và mã hóa token-level **Tri-Mask** phục vụ các phương pháp Unlearning.
+The `package_loader` package preprocesses benchmark data, creates train/validation/test splits, normalizes records, and generates token-level **Tri-Mask** datasets for unlearning.
 
+## Raw Data and Labels
 
-## 1. Xử lý & Phân loại Dữ liệu
+Unlearning data is built from four benchmark CSV files: `LLM_AT_results.csv`, `LLM_LY_results.csv`, `SO_AT_results.csv`, and `SO_LY_results.csv`. They contain two query modes:
 
-Dữ liệu unlearning được trích xuất từ 4 benchmark raw CSVs (`LLM_AT_results.csv`, `LLM_LY_results.csv`, `SO_AT_results.csv`, `SO_LY_results.csv`) tương ứng với 2 ngữ cảnh truy vấn:
+### Mode 1: Code to Required Packages
 
-### **Mode 1 (Code $\rightarrow$ Required Packages)**
+Labels come from `valid_1` (valid packages) and `hallucinated_1` (hallucinated packages).
 
-**Phân loại nhãn:** Cột `valid_1` (thư viện hợp lệ) và `hallucinated_1` (thư viện ảo giác do model tự bịa).
+### Mode 2: Problem Description to Helpful Packages
 
-### **Mode 2 (Problem Description $\rightarrow$ Helpful Packages)**
+Labels come from `valid_2` and `hallucinated_2`.
 
-**Phân loại nhãn:** Cột `valid_2` (thư viện hợp lệ) và `hallucinated_2` (thư viện ảo giác).
+### Record Types
 
-### **Phân loại Bản ghi  **
-- **`forget`** chứa ít nhất 1 package ảo giác (`len(hallucinated) > 0`).
-  - `chosen`: các package hợp lệ.
-  - `rejected`: các package mà model đã sinh ra chứa ảo giác.
-- **`retain`** chỉ chứa package hợp lệ để huấn luyện giữ lại kiến thức gốc của mô hình.
+- `forget` records contain at least one hallucinated package. `chosen` contains valid packages; `rejected` contains the generated response with hallucinations.
+- `retain` records contain valid packages and preserve correct model behavior.
 
-Sau đó tập hợp lại và chỉ lấy tập forget chứa ít nhất 1 package ảo và retain có chứa ít nhất 1 package hợp lệ, loại bỏ mẫu vượt quá chiều dài max_length = 2048 cho tri_mask.
+Records without the required valid or hallucinated package labels are excluded. Tri-Mask generation also drops records that exceed the configured maximum sequence length.
 
-## 2. Phân chia Dữ liệu: Train - Val - Test
+## Train, Validation, and Test Splits
 
-### 2.1. Phân chia Train - Test (`train_test_hallu_split.py`)
-  1. Trích xuất tất cả unique prompt gây ra ảo giác từ 4 file CSV.
-  2. Lấy mẫu cố định mặc định 100 prompt/file $\times$ 4 file = 400 prompts.
-  3. Chia theo tỷ lệ 0.9: 90% cho Train (360 prompts) và 10% cho Test (40 prompts).
-  4. Lọc lại các dòng trong raw CSV để tạo ra:
-     - `train_csvs/`: `LLM_AT_results_train.csv`, `LLM_LY_results_train.csv`, ...
-     - `test_csvs/`: `LLM_AT_results_test.csv`, `LLM_LY_results_test.csv`, ...
-     - `train_prompts.jsonl` và `test_prompts.jsonl`.
+### Train and Test
 
-### 2.2. Phân chia Train - Val (Hàm `split_records_by_prompt`)
+`train_test_hallu_split.py` samples 100 unique hallucination-producing prompts per CSV by default, for 400 prompts total. It assigns 90% (360 prompts) to train and 10% (40 prompts) to test, then writes the matching CSV rows to:
 
-  - **Chỉ trích xuất tập Val từ các mẫu Retain** (`val_ratio = 0.1` $\rightarrow$ 10% retain làm val).
-  - Giữ lại **100% tập Forget cho quá trình Train** (không chia nhỏ tập Forget vì mẫu ảo giác cần để tối ưu hàm mất mát unlearning).
-  - Gom nhóm theo tiền tố Prompt ID để đảm bảo các truy vấn Mode 1 và Mode 2 cùng thuộc Train hoặc cùng thuộc Val.
+- `train_csvs/`, including `LLM_AT_results_train.csv` and `LLM_LY_results_train.csv`.
+- `test_csvs/`, including the corresponding test CSVs.
+- `train_prompts.jsonl` and `test_prompts.jsonl`.
 
-## 3. Cấu trúc và Cách tạo File Master
+### Train and Validation
 
-File Master (`master_train.json`, `master_val.json`, `master_test.json`) tổng hợp và chuẩn hóa các file CSV.
+Validation is selected from retain records only. Forget records remain in train so hallucinated behavior stays available to the unlearning objective. Records are grouped by prompt so query modes for the same prompt remain in the same split.
 
-### 3.1. Cấu trúc một bản ghi (`UnlearningRecord`)
+## Master Datasets
+
+`master_train.json`, `master_val.json`, and `master_test.json` contain normalized records built from their corresponding CSV splits.
+
+### Record Schema
 ```json
 {
   "sample_id": "LLM_AT_results_train.csv_m2_idx12",
@@ -60,57 +55,43 @@ File Master (`master_train.json`, `master_val.json`, `master_test.json`) tổng 
 }
 ```
 
-Khi file đã được tạo, `PackageUnlearningDataset` sẽ tự động nhận diện thông qua hàm `is_preprocessed(file_path)` và đọc trực tiếp trong vòng vài mili-giây mà không cần parse lại CSV.
+`PackageUnlearningDataset` recognizes preprocessed master files with `is_preprocessed()` and loads them directly instead of reparsing the source CSVs.
 
+## Tri-Mask Encoding
 
-## 4. Cơ chế và Cách tạo Token-level Tri-Mask
-
-### 4.1. Quy ước các giá trị Tri-Mask
-
-| Giá trị `tri_mask` | Loại Token | Nhãn `labels` | Hàm Loss tác động |
+| `tri_mask` | Token type | `labels` | Loss behavior |
 | :---: | :--- | :---: | :--- |
-| **`0`** | Prompt tokens, System template, Padding, Ký tự phân cách (dấu phẩy, khoảng trắng) | `-100` | **Bị bỏ qua**: Không tính gradient |
-| **`1`** | **Retain tokens**: Các token cấu thành nên `valid_packages` + token kết thúc chuỗi (`<\|eot_id\|>` / `EOS`) | Token ID gốc | **Cross-Entropy Loss** ($\mathcal{L}_{retain}$): Củng cố kiến thức đúng |
-| **`2`** | **Forget tokens**: Các token cấu thành nên `hallucinated_packages` | Token ID gốc | **GA / NPO Loss** ($\mathcal{L}_{forget}$): Hạ xác suất sinh ảo giác |
+| `0` | Prompt, system-template, padding, and separators | `-100` | Ignored by the loss |
+| `1` | Valid package tokens and the EOS token | Original token ID | Retain cross-entropy loss |
+| `2` | Hallucinated package tokens | Original token ID | Forget GA/NPO loss |
 
-### 4.2. Thuật toán gán nhãn Tri-Mask (`generate_tri_mask.py`)
-1. **Tokenize Prompt:** Dùng Chat Template của mô hình (`apply_chat_template`) với `add_generation_prompt=True`. Toàn bộ token này nhận nhãn `tri_mask = 0`.
-2. **Tokenize Response:** Tokenize đoạn response với `return_offsets_mapping=True` để biết chính xác vị trí ký tự `(char_start, char_end)` của từng sub-token trong chuỗi gốc.
-3. **Ánh xạ Token Offset:**
-   - Nếu khoảng bù ký tự của token giao nhau với vị trí package ảo giác $\rightarrow$ gán `tri_mask = 2`.
-   - Nếu giao nhau với vị trí package hợp lệ $\rightarrow$ gán `tri_mask = 1`.
-   - Các token còn lại (dấu phẩy, khoảng trắng) $\rightarrow$ gán `tri_mask = 0`.
-4. **Gán nhãn EOS Token:** Token kết thúc (`eos_token_id`) được bổ sung vào cuối và nhận `tri_mask = 1` để khuyến khích mô hình học cách dừng sớm thay vì tiếp tục bịa package ảo giác.
+`generate_tri_mask.py` tokenizes the prompt with the model's chat template and assigns prompt tokens a mask value of `0`. Response token offsets are matched against valid and hallucinated package spans: valid package tokens receive `1`, hallucinated package tokens receive `2`, and separators receive `0`. The EOS token is appended with mask value `1`.
 
+The pipeline writes these tokenized JSONL files:
 
+- `npo_retain_tok_*.jsonl`: retain samples with mask values `0` and `1`.
+- `npo_forget_tok_*.jsonl`: forget samples with mask values `0`, `1`, and `2`.
+- `npo_val_retain_tok_*.jsonl`: validation retain samples for early stopping.
 
-Kết quả sinh ra 3 file JSONL đã được tokenized sẵn:
-- `npo_retain_tok_*.jsonl`: Chứa các mẫu retain (chỉ gồm token `0` và `1`).
-- `npo_forget_tok_*.jsonl`: Chứa các mẫu forget (gồm cả token `0`, `1`, và `2`).
-- `npo_val_retain_tok_*.jsonl`: Chứa các mẫu validation retain dùng cho early stopping.
-
-
----
-
-## 6. Cấu trúc File
+## Directory Structure
 
 ```
 data/<Model_Name>/
-├── FINAL_RESULTS.csv                 # Kết quả gốc từ benchmark sinh mã ban đầu
+├── FINAL_RESULTS.csv                 # Original code-generation benchmark results
 ├── LLM_AT_results.csv                # Raw CSV benchmark: LLM All Time
 ├── LLM_LY_results.csv                # Raw CSV benchmark: LLM Last Year
 ├── SO_AT_results.csv                 # Raw CSV benchmark: Stack Overflow All Time
 ├── SO_LY_results.csv                 # Raw CSV benchmark: Stack Overflow Last Year
-├── train_test_split/                 # [Bước 1] Sinh ra sau train_test_hallu_split.py
-│   ├── split_metadata.json           # Thông tin cấu hình và thống kê phân chia
-│   ├── train_prompts.jsonl           # 360 unique prompt train
-│   ├── test_prompts.jsonl            # 40 unique prompt test cho benchmark eval
-│   ├── train_csvs/                   # 4 CSVs chứa dòng train tương ứng
-│   ├── test_csvs/                    # 4 CSVs chứa dòng test tương ứng
-│   ├── master_train.json             # [Bước 2] Toàn bộ bản ghi train chuẩn hóa
-│   ├── master_val.json               # [Bước 2] Bản ghi held-out retain val
-│   └── master_test.json              # [Bước 2] Bản ghi test dùng đánh giá unlearning
-└── tri_mask/                         # [Bước 3] Sinh ra sau generate_tri_mask.py
+├── train_test_split/                 # Train/test split outputs
+│   ├── split_metadata.json           # Split configuration and counts
+│   ├── train_prompts.jsonl           # 360 train prompts by default
+│   ├── test_prompts.jsonl            # 40 held-out test prompts by default
+│   ├── train_csvs/                   # Filtered train rows from each source CSV
+│   ├── test_csvs/                    # Filtered test rows from each source CSV
+│   ├── master_train.json             # Normalized train records
+│   ├── master_val.json               # Held-out retain validation records
+│   └── master_test.json              # Normalized test records
+└── tri_mask/                         # Tri-Mask generation outputs
     ├── npo_retain_tok_*.jsonl        # Tokenized retain records
     ├── npo_forget_tok_*.jsonl        # Tokenized forget records
     └── npo_val_retain_tok_*.jsonl    # Tokenized validation retain records

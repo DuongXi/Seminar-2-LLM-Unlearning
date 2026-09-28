@@ -21,7 +21,7 @@ def apply_hf_token() -> None:
 
 
 def download_base_model(model_name: str, models_dir: Path) -> Path:
-    """Tải model từ Hugging Face vào models_dir/<id đầy đủ>, đã có thì bỏ qua"""
+    """Download a Hugging Face model into models_dir and reuse it if present."""
     from huggingface_hub import snapshot_download
 
     apply_hf_token()
@@ -32,7 +32,7 @@ def download_base_model(model_name: str, models_dir: Path) -> Path:
     if not model_local_dir.exists() or not any(model_local_dir.iterdir()):
         model_local_dir.mkdir(parents=True, exist_ok=True)
         snapshot_download(repo_id=repo_id, local_dir=str(model_local_dir))
-    print(f"Base model đã có tại: {model_local_dir}")
+    print(f"Base model available at: {model_local_dir}")
     print(sorted(p.name for p in model_local_dir.iterdir())[:20])
     return model_local_dir
 
@@ -45,7 +45,7 @@ def build_model(
     model_family: str = "auto",
     padding_side: str = "right",
 ) -> tuple[Any, Any]:
-    """Build causal LM + tokenizer đã chuẩn hoá pad/eos, trả về (model, tokenizer)"""
+    """Build a causal LM and tokenizer with configured padding and EOS tokens."""
     import torch
     from transformers import AutoModelForCausalLM
 
@@ -100,7 +100,7 @@ def build_model(
 
 
 def sanity_check_generation(model_path: Path, dtype: str = "auto") -> str:
-    """Genarate 1 time to check if torch/transformers/CUDA runnable"""
+    """Generate one response to verify the PyTorch, Transformers, and CUDA setup."""
     import torch
     from transformers import GenerationConfig
 

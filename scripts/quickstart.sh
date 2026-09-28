@@ -1,4 +1,4 @@
-# Chạy cả pipeline theo từng bước, vd: ./scripts/quickstart.sh --config model_config/default.json
+# Run the full pipeline, for example: ./scripts/quickstart.sh --config model_config/default.json
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

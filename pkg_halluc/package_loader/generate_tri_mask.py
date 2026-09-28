@@ -126,12 +126,7 @@ def build_tri_mask_record(
         res["template"] = template_tag
     return res
 
-try:
-    from pkg_halluc.common.model_presets import resolve_model_suffix
-except ImportError:
-    def resolve_model_suffix(model_name: str, explicit_suffix: Optional[str] = None) -> str:
-        """Fallback if common module cannot be imported"""
-        return explicit_suffix or ""
+from pkg_halluc.common.model_presets import resolve_model_suffix
 
 def generate_tri_mask_dataset(
     dataset: Union[PackageUnlearningDataset, str, Path, List[str], pd.DataFrame] = None,
@@ -276,7 +271,7 @@ def main():
     parser.add_argument(
         "--model_name",
         required=True,
-        help="Model identifier or local checkpoint path (e.g. 'meta-llama/Llama-3.2-1B-Instruct', 'Qwen/Qwen2.5-Coder-3B-Instruct').",
+        help="Model identifier or local checkpoint path.",
     )
     parser.add_argument(
         "--model_family",
@@ -292,7 +287,7 @@ def main():
     parser.add_argument(
         "--suffix",
         default=None,
-        help="Explicit filename suffix (e.g. '_1B', '_1.5B', '_3B'). If omitted, auto-resolved from model_name.",
+        help="Explicit filename suffix.",
     )
     parser.add_argument(
         "--max_length",

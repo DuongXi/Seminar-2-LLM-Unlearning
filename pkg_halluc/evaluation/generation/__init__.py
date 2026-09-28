@@ -1,1 +1,1 @@
-"""Sinh code và hỏi tên package bằng model cần đánh giá."""
+"""Generate code and request package names from the model being evaluated."""

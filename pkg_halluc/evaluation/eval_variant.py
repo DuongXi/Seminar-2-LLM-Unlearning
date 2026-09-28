@@ -1,4 +1,4 @@
-"""Eval 1 checkpoint: sinh code, hỏi package (mode 1, 2), chấm hallucination và quét import trần."""
+"""Evaluate one checkpoint by generating code, requesting packages, and scoring hallucinations."""
 import argparse
 import csv
 import json
@@ -19,20 +19,20 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--method", default="standard", choices=["standard"])
     ap.add_argument("--model_path", required=True)
-    ap.add_argument("--tag", required=True, help="Tên biến thể, dùng để đặt tên thư mục kết quả")
+    ap.add_argument("--tag", required=True, help="Variant name used for the output directory")
     ap.add_argument("--n_prompts", type=int, default=150)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--code_temp", type=float, default=0.7)
     ap.add_argument("--package_temp", type=float, default=0.01)
     ap.add_argument("--batch_size", type=int, default=16)
-    ap.add_argument("--pypi_csv", required=True, help="Danh sách package PyPI, dùng cho package_detection và quét bare import")
-    ap.add_argument("--false_positive_csv", required=True, help="CSV các tên được coi là false positive")
+    ap.add_argument("--pypi_csv", required=True, help="PyPI package list for package detection and bare-import scanning")
+    ap.add_argument("--false_positive_csv", required=True, help="CSV of package names treated as false positives")
     ap.add_argument("--package_modes", type=int, nargs="*", default=[1, 2], choices=[1, 2])
     ap.add_argument(
         "--eval_prompts_path", required=True,
-        help="Đường dẫn tới prompts.jsonl để lấy eval set",
+        help="Path to prompts.jsonl used to sample the evaluation set",
     )
-    ap.add_argument("--out_dir", required=True, help="Thư mục ghi kết quả")
+    ap.add_argument("--out_dir", required=True, help="Directory for evaluation outputs")
     args = ap.parse_args()
     args.package_modes = set(args.package_modes)
 
@@ -53,7 +53,7 @@ def main():
     code_out = os.path.join(out_dir, "code.json")
     master_out = os.path.join(out_dir, "master.json")
 
-    print(f"[{args.tag}] Đang sinh code cho {len(sample)} prompt...")
+    print(f"[{args.tag}] Generating code for {len(sample)} prompts...")
     generate_code.generate_code(
         sampled_path, code_out, args.model_path, "Python",
         args.code_temp, 20, 0.9, args.batch_size, False,
@@ -69,7 +69,7 @@ def main():
                     json.dump({"prefix": "", "input": "", "full_prompt": "", "response": ""}, f)
                     f.write("\n")
             continue
-        print(f"[{args.tag}] Đang hỏi package, mode {mode}...")
+        print(f"[{args.tag}] Requesting packages for mode {mode}...")
         generate_package_names.generate_packages(
             mode, master_out, pkg_out, args.model_path, "Python",
             args.package_temp, 20, 0.9, False,
@@ -78,7 +78,7 @@ def main():
     package_detection.detect_packages(
         os.path.dirname(args.pypi_csv), out_dir, args.tag, "verbose", "Python", "master.json", "",
     )
-    print(f"[{args.tag}] Xong -> {out_dir}/FINAL_RESULTS.csv")
+    print(f"[{args.tag}] Complete -> {out_dir}/FINAL_RESULTS.csv")
 
     valid_names = import_scan.load_name_set(args.pypi_csv)
     fps = set()
@@ -91,7 +91,7 @@ def main():
     pd.DataFrame(records).to_csv(import_csv, index=False)
     total = total_valid + total_hall
     rate = 100.0 * total_hall / total if total else float("nan")
-    print(f"[{args.tag}] Import-scan (ngữ cảnh 'bare import', bổ sung cho RQ4): "
+    print(f"[{args.tag}] Import scan (bare-import context, supplemental RQ4 metric): "
           f"valid={total_valid} hallucinated={total_hall} rate={rate:.2f}% -> {import_csv}")
 
 

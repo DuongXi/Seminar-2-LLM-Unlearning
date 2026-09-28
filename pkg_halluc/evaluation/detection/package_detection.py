@@ -1,5 +1,4 @@
-"""Chấm package hallucination: parse tên package trong response, so với danh sách PyPI."""
-# Tri-mask: file lấy từ paper Adaptive Unlearning (đã trim/sửa nhẹ)
+"""Detect package hallucinations by parsing responses and checking PyPI names."""
 import pandas as pd
 import re
 import logging
@@ -61,12 +60,12 @@ def check_npms(npm_list, npm_names):
 def detect_repetitive_loop(
     text: str, min_cycle_items: int = 3, min_cycles: int = 3
 ) -> int:
-    """Tìm chu kỳ mục lặp lại (model collapse), trả về vị trí ký tự bắt đầu chu kỳ thứ hai, 0 nếu không có."""
+    """Find repeated output cycles and return the start of the second cycle."""
     lines = text.split("\n")
     normalized_lines = []
 
     for line in lines:
-        # Bỏ ký hiệu danh sách đánh số: "1. package" -> "package"
+        # Remove list numbering before comparing repeated lines.
         clean = re.sub(r"^\s*\d+[\.\)]\s*", "", line)
         clean = clean.strip()
         if clean:
@@ -75,13 +74,13 @@ def detect_repetitive_loop(
     if len(normalized_lines) < min_cycle_items * min_cycles:
         return 0
 
-    # Thử các độ dài chu kỳ khác nhau
+    # Try possible cycle lengths.
     for cycle_len in range(
         min_cycle_items, min(21, len(normalized_lines) // min_cycles + 1)
     ):
         pattern = normalized_lines[:cycle_len]
 
-        # Kiểm tra pattern này có lặp lại không
+        # Count consecutive repetitions of the candidate cycle.
         repetitions = 1
         for i in range(cycle_len, len(normalized_lines), cycle_len):
             chunk = normalized_lines[i : i + cycle_len]
@@ -91,8 +90,7 @@ def detect_repetitive_loop(
                 break
 
         if repetitions >= min_cycles:
-            # Tìm thấy vòng lặp, cắt tại vị trí ký tự của chu kỳ thứ hai
-
+            # Return the start position of the repeated cycle.
             lines_to_skip = cycle_len
             char_pos = 0
             lines_counted = 0
@@ -113,37 +111,33 @@ def detect_repetitive_loop(
 
 
 def normalize_python_package(name: str) -> str:
-    """Chuẩn hoá tên package theo PEP 503: gộp -, _, . thành - và viết thường."""
+    """Normalize a package name according to PEP 503."""
     if not name or not isinstance(name, str):
         return name
 
-    # Bỏ ký hiệu danh sách đánh số nếu còn sót
+    # Remove any remaining list numbering.
     name = re.sub(r"\d+\.\s*", "", name)
 
-    # Xử lý ký tự xuống dòng bên trong tên
+    # Normalize line breaks embedded in a package name.
     name = re.sub(r"(?<=.)\n(?=.)", " ", name)
     name = re.sub(r"\n", "", name)
 
-    # Chuẩn hoá dấu phân cách: gộp gạch ngang, gạch dưới, dấu chấm về 1 dấu gạch ngang
+    # Normalize separators to hyphens.
     name = re.sub(r"[-_.]+", "-", name)
 
-    # Bỏ ký tự đặc biệt/khoảng trắng ở đầu-cuối
+    # Trim surrounding punctuation and whitespace.
     name = name.strip(" `.-_")
 
-    # Chuyển về chữ thường
+    # Package names are case-insensitive.
     return name.lower()
 
 
 def extract_and_clean_packages(
     package_string: str, detect_loops: bool = True
 ) -> List[str]:
-    """Parse và làm sạch tên package từ output của model (danh sách đánh số, backtick, gạch đầu dòng, dấu phẩy)."""
-    # BƯỚC 0: Cắt tại đoạn giải thích/ghi chú (dấu hiệu văn xuôi)
-    print(package_string)
+    """Parse package names from model output and remove common formatting noise."""
 
     package_string = strip_code_blocks(package_string)
-
-    print(package_string)
 
     prose_markers = [
         r"\bExplanation:",
@@ -156,18 +150,17 @@ def extract_and_clean_packages(
     for marker in prose_markers:
         match = re.search(marker, package_string, re.IGNORECASE)
         if match:
-            # Chỉ giữ phần văn bản trước dấu hiệu đó
+            # Ignore explanatory prose after the package list.
             package_string = package_string[: match.start()]
             break
 
-    # BƯỚC 1: Phát hiện vòng lặp
+    # Truncate repetitive model output.
     if detect_loops:
         loop_start = detect_repetitive_loop(package_string)
         if loop_start > 0:
-            original_len = len(package_string)
             package_string = package_string[:loop_start]
 
-    # BƯỚC 2: Ưu tiên danh sách đánh số
+            # Prefer explicitly numbered package lists.
     numbered_pattern = r"(\d+[\.\)])\s*[`\']?([a-zA-Z0-9\-_\.]+)[`\']?"
     numbered_matches = re.findall(numbered_pattern, package_string)
 
@@ -177,7 +170,7 @@ def extract_and_clean_packages(
         for number, pkg in numbered_matches:
             pkg = pkg.strip()
             if pkg and len(pkg) > 2:
-                # Lấy nguyên dòng chứa mục đánh số để kiểm tra pattern
+                # Inspect the complete numbered line before accepting the name.
                 line_pattern = (
                     re.escape(number)
                     + r"\s*[`\']?"
@@ -189,7 +182,7 @@ def extract_and_clean_packages(
                 if line_match:
                     full_line = line_match.group(0)
 
-                    # Bỏ qua nếu dòng chứa pattern mang tính mô tả
+                    # Skip lines that match descriptive patterns.
                     skip_patterns = [
                         r"\bfrom\b",  # "Pipe from multiprocessing"
                         r"\bclass\b",  # "QueueData class"
@@ -207,18 +200,13 @@ def extract_and_clean_packages(
                     if not should_skip:
                         numbered_packages.append(pkg)
                 else:
-                    # Không tìm được nguyên dòng, giữ lại package
+                    # Keep the package when its full line cannot be found.
                     numbered_packages.append(pkg)
 
         if len(numbered_packages) >= 2:
             parts = numbered_packages
             from_numbered_list = True
-        else:
-            print(f"\n🔍 Extracted from numbered list:")
-            print(numbered_packages)
-            print("🔍 END\n")
-
-    # BƯỚC 3: Nếu không có danh sách đánh số thì trích kiểu chung
+    # Parse the full response when it is not a numbered list.
     if not from_numbered_list:
         text = re.sub(r"```[a-z]*\n?", "", package_string)
         text = re.sub(r"```", "", text)
@@ -230,7 +218,7 @@ def extract_and_clean_packages(
         text = re.sub(r"'([a-zA-Z0-9\-_\.]+)'", r",\1,", text)
         parts = text.split(",")
 
-    # BƯỚC 4: Lọc theo từ
+    # Filter common non-package words.
     delete_words = {
         "and",
         "the",
@@ -574,7 +562,7 @@ def extract_and_clean_packages(
 
         cleaned.append(pkg)
 
-    # BƯỚC 5: Lọc chất lượng
+    # Reject responses that are mostly prose or appear truncated.
     has_backticks = "`" in package_string
     has_numbered_list = bool(re.search(r"(\n|^)\s*\d+[\.\)]\s+", package_string))
     has_bullet_list = bool(re.search(r"(\n|^)\s*[-*]\s+", package_string))
@@ -604,7 +592,7 @@ def extract_and_clean_packages(
     ):
         return []
 
-    # BƯỚC 6: Chuẩn hoá & loại trùng
+    # Normalize package names and remove duplicates.
     seen = set()
     result = []
     for pkg in cleaned:
@@ -653,30 +641,30 @@ def package_search_python(df, data_path):
 
 
 def strip_code_blocks(text: str) -> str:
-    """Bỏ các code block (đóng hoặc chưa đóng) khỏi text nhưng giữ lại lệnh pip install."""
+    """Remove code blocks while preserving pip install commands."""
     if not text or not isinstance(text, str):
         return text
 
-    # Trích trước các lệnh pip install để giữ nguyên vẹn
+    # Preserve pip install commands before removing code blocks.
     pip_install_pattern = r"pip\s+install\s+[^\n]+"
     pip_installs = re.findall(pip_install_pattern, text, re.IGNORECASE)
 
-    # Bước 1: Bỏ mọi code block đóng đúng cặp
+    # Remove closed code blocks.
     code_block_pattern = r"```[\w]*\n.*?\n```"
     cleaned_text = re.sub(code_block_pattern, "\n", text, flags=re.DOTALL)
 
-    # Bước 2: Code block chưa đóng (hết token limit) thì xoá từ dấu ``` mở đến hết
+    # Remove an unfinished code block through the end of the response.
     unclosed_pattern = r"```[\w]*\n.*"
     if re.search(unclosed_pattern, cleaned_text, re.DOTALL):
         match = re.search(r"```", cleaned_text)
         if match:
             cleaned_text = cleaned_text[: match.start()]
 
-    # Bước 3: Bỏ code block inline trải dài nhiều dòng
+    # Remove multiline inline code blocks.
     inline_multiline_pattern = r"`[^`\n]*\n(?:(?!\d+[\.\)]\s)[^`])*`"
     cleaned_text = re.sub(inline_multiline_pattern, "\n", cleaned_text, flags=re.DOTALL)
 
-    # Bước 4: Thêm lại các câu lệnh pip install
+    # Restore the preserved install commands.
     if pip_installs:
         cleaned_text = cleaned_text + "\n" + "\n".join(pip_installs)
 
@@ -740,8 +728,8 @@ def check_pips(pip_list, pip_names):
 
 
 def sanitize_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Làm sạch các cột chuỗi của DataFrame."""
-    # Loại ký tự NUL và chuẩn hoá xuống dòng ở các cột kiểu chuỗi
+    """Clean string columns in a DataFrame."""
+    # Remove NUL characters and normalize line endings.
     obj_cols = df.select_dtypes(include=["object"]).columns
     df[obj_cols] = df[obj_cols].applymap(
         lambda x: (

@@ -1,4 +1,4 @@
-# Tải base model từ Hugging Face
+# Download a base model from Hugging Face.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,17 +11,17 @@ CONFIG_FILE=""
 
 usage() {
     cat <<USAGE
-Cách dùng: download_model.sh [optional]
-  --config FILE              File config JSON 
-  --model TEN_HOAC_ID_HF     Preset (e.g. qwen2.5-coder-1.5b) or HF id (default: $MODEL)
-  --dtype auto|bfloat16|float16    
-  --skip-sanity-check               
+Usage: download_model.sh [options]
+    --config FILE              JSON configuration file
+    --model HF_ID_OR_PRESET    Preset (e.g. qwen2.5-coder-1.5b) or HF ID (default: $MODEL)
+    --dtype auto|bfloat16|float16
+    --skip-sanity-check        Skip the generation sanity check
   -h, --help
 USAGE
     exit "${1:-0}"
 }
 
-# Pass 1: Look for `--config` as default
+# Read the config path before loading config-derived defaults.
 _args=("$@")
 for ((_i = 0; _i < ${#_args[@]}; _i++)); do
     if [ "${_args[$_i]}" = "--config" ]; then
@@ -34,10 +34,10 @@ if [ -n "$CONFIG_FILE" ]; then
     load_config "$CONFIG_FILE" ""
     [ -n "${CFG_MODEL_NAME:-}" ] && MODEL="$CFG_MODEL_NAME"
     [ -n "${CFG_DTYPE:-}" ] && DTYPE="$CFG_DTYPE"
-    echo "[download-model] da nap config: $CONFIG_FILE"
+    echo "[download-model] Loaded config: $CONFIG_FILE"
 fi
 
-# Pass 2: handle value overrides from the config
+# Apply command-line overrides.
 while [ $# -gt 0 ]; do
     case "$1" in
         --config) shift 2 ;; 
@@ -45,7 +45,7 @@ while [ $# -gt 0 ]; do
         --dtype) DTYPE="$2"; shift 2 ;;
         --skip-sanity-check) SKIP_SANITY_CHECK="true"; shift ;;
         -h|--help) usage 0 ;;
-        *) echo "tuỳ chọn không rõ: $1" >&2; usage 1 ;;
+        *) echo "Unknown option: $1" >&2; usage 1 ;;
     esac
 done
 

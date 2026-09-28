@@ -1,44 +1,44 @@
 
-# pkg-halluc: Giảm thiểu Package Hallucination
+# pkg-halluc: Mitigating Package Hallucinations
 
-| Method | Loại | Nguồn |
+| Method | Description | Source |
 | --- | --- | --- |
-| **Base** | model gốc| -- |
-| **GA** (Gradient Ascent) | fine-tune toàn bộ trọng số, dữ liệu tĩnh, mask theo token (tri-mask) | 
-| **NPO** (Negative Preference Optimization) | fine-tune toàn bộ trọng số, dữ liệu tĩnh, mask theo token (tri-mask) | 
-| **GA-plain** | fine-tune toàn bộ trọng số, cùng dữ liệu tĩnh, không tri-mask | 
-| **NPO-plain** | fine-tune toàn bộ trọng số, cùng dữ liệu tĩnh, không tri-mask | 
+| **Base** | Original model | -- |
+| **GA** (Gradient Ascent) | Full fine-tuning on static data with token-level Tri-Mask | |
+| **NPO** (Negative Preference Optimization) | Full fine-tuning on static data with token-level Tri-Mask | |
+| **GA-plain** | Full fine-tuning on the same static data without Tri-Mask | |
+| **NPO-plain** | Full fine-tuning on the same static data without Tri-Mask | |
 
-## Cấu trúc thư mục
+## Repository Structure
 
 ```
-├── model_config/     # File config JSON --config cho scripts/*.sh, xem "Cấu hình"
-├── data/               # dataset PackageHallucination cho Python + data/eval/
-├── data_gen/           # script gen full dataset PackageHallucination
-├── notebooks/          # notebook Kaggle
-├── scripts/            
-│   ├── common.sh              # thiết lập dùng chung
-│   ├── quickstart.sh           # chạy full pipeline
-│   ├── download_model.sh        # tải base model + sanity-check
-│   ├── build_data.sh             # dựng dữ liệu tri-mask cho GA/NPO
-│   ├── train_ga.sh, train_npo.sh              # train GA/NPO (qua pkg_halluc/training/tri_mask/train_tri_mask.py)
-│   ├── train_ga_plain.sh, train_npo_plain.sh  # train GA-plain/NPO-plain
-│   ├── train_tri_mask_common.sh, train_plain_common.sh  # phần dùng chung
-│   ├── eval.sh                                 # eval 1 checkpoint bất kỳ (base/ga/npo/ga_plain/npo_plain)
-│   └── report.sh                                # gộp eval_runs/* thành bảng kết quả cuối
-└── pkg_halluc/         # code Python, vai trò từng file xem pkg_halluc/README.md
-    ├── common/             # dùng chung: preset model, load model, tải model, đọc config, tiện ích tri-mask
-    ├── package_loader/     # dataset/dataloader, dựng dữ liệu tri-mask (tri-mask, prompt, tokenizer setup...)
-    ├── training/           # training 4 method
-    ├── evaluation/         # eval 1 checkpoint + report; generation/ (sinh code, hỏi package), detection/
+├── model_config/     # JSON configs passed to scripts/*.sh; see Configuration
+├── data/              # PackageHallucination datasets and evaluation data
+├── data_gen/          # Scripts for generating the full PackageHallucination dataset
+├── notebooks/         # Kaggle notebooks
+├── scripts/
+│   ├── common.sh                         # Shared shell setup
+│   ├── quickstart.sh                     # Run the full pipeline
+│   ├── download_model.sh                # Download a base model and run a sanity check
+│   ├── build_data.sh                    # Build unlearning and optional CAA datasets
+│   ├── train_ga.sh, train_npo.sh         # Train GA/NPO Tri-Mask models
+│   ├── train_ga_plain.sh, train_npo_plain.sh # Train GA-plain/NPO-plain models
+│   ├── train_tri_mask_common.sh, train_plain_common.sh # Shared training logic
+│   ├── eval.sh                           # Evaluate a base or fine-tuned checkpoint
+│   └── report.sh                         # Combine evaluation runs into result tables
+└── pkg_halluc/         # Python package; see pkg_halluc/README.md for module details
+  ├── common/          # Model presets, setup, config, and Tri-Mask utilities
+  ├── package_loader/  # Dataset loading, preprocessing, and Tri-Mask generation
+  ├── training/        # Training implementations
+  ├── evaluation/      # Checkpoint evaluation, generation, detection, and reporting
 ```
 
-## Yêu cầu trước khi chạy
+## Requirements
 
 - Python >= 3.10
 - GPU CUDA
 
-## Cài đặt
+## Installation
 
 ```bash
 git clone https://github.com/DuongXi/Seminar-2-LLM-Unlearning
@@ -47,35 +47,32 @@ cd Seminar-2-LLM-Unlearning
 pip install -r requirements.txt 
 ```
 
-## Cấu hình
+## Configuration
 
-Mỗi bash script trong `scripts/` nhận tham số qua flag dòng lệnh, với giá
-trị mặc định sẵn ngay trong script (xem `--help` của từng script). Muốn dung san tham so tu cac file
-config co san truyền `--config <file>`:
+Each script in `scripts/` accepts command-line options and has defaults documented by `--help`. Pass `--config <file>` to load defaults from a model configuration:
 
 ```bash
 bash scripts/train_ga.sh --config model_config/default.json
 bash scripts/eval.sh --config model_config/default.json --tag ga --model-path ...
 ```
 
-`--config` nạp giá trị từ file JSON làm **mặc định**; flag nào gõ thêm sau
-đó trên dòng lệnh vẫn **overwrite**,không cần sửa file JSON để chạy thử 1 giá trị khác:
+Values from `--config` are defaults. Explicit command-line options override them, so one-off changes do not require editing the JSON file:
 
 ```bash
 bash scripts/train_ga.sh --config model_config/default.json --lr 2e-5
 ```
 
-| File | Dùng cho |
+| File | Use |
 | --- | --- |
 | `model_config/default.json` | Qwen2.5-Coder-3B |
-| `model_config/smoke_test.json` | chạy thử nhanh (25 prompt đánh giá, dữ liệu retain/forget mọi method giới hạn 40 dòng/split|
-| `model_config/qwen2.5-coder-1.5b.json`, `model_config/qwen2.5-coder-3b.json` | preset Qwen 2.5 Coder (1.5B / 3B) |
-| `model_config/llama3.2-1b.json`, `model_config/llama3.2-3b.json` | preset Llama 3.2 (1B / 3B) |
-| `model_config/deepseek-coder-1.3b.json` | preset DeepSeek Coder 1.3B |
+| `model_config/smoke_test.json` | Quick run (25 evaluation prompts; retain/forget data capped at 40 records per split) |
+| `model_config/qwen2.5-coder-1.5b.json`, `model_config/qwen2.5-coder-3b.json` | Qwen 2.5 Coder presets (1.5B / 3B) |
+| `model_config/llama3.2-1b.json`, `model_config/llama3.2-3b.json` | Llama 3.2 presets (1B / 3B) |
+| `model_config/deepseek-coder-1.3b.json` | DeepSeek Coder 1.3B preset |
 
 
-## Hướng dẫn chạy train
-### 0. Xem hướng dẫn chi tiết
+## Training
+### Script Help
 
 ```bash
 bash scripts/train_ga.sh --help
@@ -84,42 +81,42 @@ bash scripts/train_npo.sh --help
 bash scripts/train_npo_plain.sh --help
 ```
 
-### 1. Lệnh cơ bản
+### Basic Usage
 
 ```bash
 bash scripts/train_ga.sh --model deepseek-coder-1.3b
 ```
 
-Script tự đổi tên preset thành id Hugging Face, kiểm tra base model trong `models/`, train xong thi ghi kết quả vào `checkpoints/`
+The script resolves model presets, checks for a local checkpoint under `models/`, and writes trained checkpoints to `checkpoints/`.
 
-`--model` nhận tên preset (ví dụ `qwen-0.5b`, `qwen-1.5b`, `qwen-3b`, `llama3.2-1b`, `deepseek-coder-1.3b`) hoặc id Hugging Face đầy đủ. Tên không nằm trong bảng preset (ví dụ chỉ gõ `qwen`) sẽ báo không tìm thấy model. Bỏ `--model` thì dùng `Qwen/Qwen2.5-Coder-0.5B-Instruct`.
+`--model` accepts a preset (for example, `qwen-0.5b`, `qwen-1.5b`, `qwen-3b`, `llama3.2-1b`, or `deepseek-coder-1.3b`) or a full Hugging Face ID. Unknown short names are not treated as presets. The default is `meta-llama/Llama-3.2-1B-Instruct`.
 
-### 2. Giá trị mặc định khi chỉ truyền `--model`
+### Defaults
 
-Không có `--config` thì không đọc file JSON nào, toàn bộ tham số lấy từ giá trị mặc định:
+Without `--config`, all options use the defaults in the shell script:
 
-| Tham số | Mặc định | Ý nghĩa |
+| Option | Default | Description |
 | --- | --- | --- |
 | `--lr` | `1e-5` | Learning rate |
-| `--epochs` | `3` | Số epoch|
-| `--seed` | `42` | Seed|
-| `--dtype` | `auto` | Kiểu số của trọng số: bfloat16 |
-| `--use-lora` | tắt | Mặc định là **full fine-tune** (train toàn bộ trọng số) |
-| Early stopping | bật | |
-| Batch | 1 × 16 | Mỗi step gom 16 mẫu (batch 1, gradient accumulation 16) |
+| `--epochs` | `3` | Training epochs |
+| `--seed` | `42` | Random seed |
+| `--dtype` | `auto` | Weight precision (bfloat16 when supported) |
+| `--use-lora` | off | Full fine-tuning is used by default |
+| Early stopping | on | |
+| Batch | 1 × 16 | 16 samples per optimizer step (batch size 1, gradient accumulation 16) |
 
-### 3. Chạy bằng file config
+### Use a Model Config
 
 ```bash
 bash scripts/train_ga.sh --config model_config/deepseek-coder-1.3b.json
-bash scripts/train_ga.sh --config model_config/deepseek-coder-1.3b.json --epochs 5   # flag thêm sẽ ghi đè giá trị trong file json
+bash scripts/train_ga.sh --config model_config/deepseek-coder-1.3b.json --epochs 5   # CLI options override config values
 ```
 
-Lưu ý: các file `model_config/*.json` dang bật sẵn LoRA (`use_lora: true`), vì nếu dùng kaggle free, dung lượng của output sẽ vuợt quá mức kaggle cho phép, gây lỗi out of memory, còn khi không có `--config` mặc định là full fine-tune
+The supplied `model_config/*.json` files enable LoRA (`use_lora: true`) to reduce memory and checkpoint size. Without a config, training defaults to full fine-tuning.
 
-### 4. Lệnh full, không phụ thuộc file JSON
+### Specify All Options Explicitly
 
-Qua script, ghi rõ mọi flag (giá trị dưới đây bằng đúng mặc định):
+The following command specifies each option explicitly using the defaults:
 ```bash
 bash scripts/train_ga.sh \
   --model deepseek-coder-1.3b \
@@ -136,33 +133,70 @@ bash scripts/train_ga.sh \
   --early-stopping-threshold 0.0
 ```
 
-Co thể thêm `--use-lora --lora-rank 16` để train LoRA, `--disable-early-stopping` để tắt early stopping
+Add `--use-lora --lora-rank 16` to train a LoRA adapter, or `--disable-early-stopping` to disable early stopping.
 
-#### KQ sau khi train sẽ lưu ở kaggle/working/pkg-halluc/checkpoints, train xong thì zip checkpoint lại và tải về
+On Kaggle, checkpoints are written under `/kaggle/working/pkg-halluc/checkpoints`. Archive and download them after training if needed.
 
+## Contrastive Activation Addition (CAA)
 
-## Cách chạy pipeline
+CAA builds contrastive train and test data from the unlearning split.
+
+### Build Contrastive Data
+
+Set `data.main_path` in the model config, then generate the contrastive datasets:
 
 ```bash
-bash scripts/download_model.sh --model Qwen/Qwen2.5-Coder-0.5B-Instruct   # tải model gốc, sanity-check
-bash scripts/build_data.sh --model Qwen/Qwen2.5-Coder-0.5B-Instruct        # dựng dữ liệu tri-mask cho GA/NPO
-
-bash scripts/train_ga.sh        --model Qwen/Qwen2.5-Coder-0.5B-Instruct
-bash scripts/train_npo.sh       --model Qwen/Qwen2.5-Coder-0.5B-Instruct
-bash scripts/train_ga_plain.sh  --model Qwen/Qwen2.5-Coder-0.5B-Instruct
-bash scripts/train_npo_plain.sh --model Qwen/Qwen2.5-Coder-0.5B-Instruct
-
-bash scripts/eval.sh --tag base      --model-path models/Qwen/Qwen2.5-Coder-0.5B-Instruct
-bash scripts/eval.sh --tag ga        --model-path checkpoints/Qwen2.5-Coder-0.5B-Instruct_ga
-bash scripts/eval.sh --tag npo       --model-path checkpoints/Qwen2.5-Coder-0.5B-Instruct_npo
-bash scripts/eval.sh --tag ga_plain  --model-path checkpoints/Qwen2.5-Coder-0.5B-Instruct_ga_plain
-bash scripts/eval.sh --tag npo_plain --model-path checkpoints/Qwen2.5-Coder-0.5B-Instruct_npo_plain
-
-bash scripts/report.sh   # gộp eval_runs/* thành bảng kết quả cuối + lưu CSV
+bash scripts/build_data.sh --config model_config/default.json --contrastive
 ```
 
-Hoặc chạy hết 1 lượt bằng:
+This reads `train_test_split/master_train.json` and `master_test.json`. It writes training records under `<main_path>/contrastive/generate/` and pairwise test data under `<main_path>/contrastive/test/`. Test data keeps records with hallucinated packages, removes invalid prompts and train/test prompt overlap, and defaults to original (unshuffled) records in `test_dataset_pairwise.json`.
+
+### Extract Vectors
 
 ```bash
-bash scripts/quickstart.sh --model Qwen/Qwen2.5-Coder-0.5B-Instruct
+bash scripts/CAA.sh --config model_config/default.json --stage extract --layers 10 12 14
+```
+
+Vectors are written under `<main_path>/contrastive/vectors/` unless `--output-dir` is provided.
+
+### Optional Pairwise Evaluation
+
+The evaluator uses `<main_path>/contrastive/test/test_dataset_pairwise.json` by default. It compares the mean token log-likelihood of `answer_matching_behavior` and `answer_not_matching_behavior`; use `--dataset-path` to supply another JSON dataset with those fields:
+
+```bash
+bash scripts/CAA.sh --config model_config/default.json --stage eval \
+  --dataset-path path/to/pairwise_evaluation.json \
+  --layers 10 12 14 --multipliers 0 0.5 1
+```
+
+## Run the Pipeline
+
+The example below uses the matching Llama 3.2 1B config and dataset. Create the split once if `master_train.json` and `master_test.json` are missing:
+
+```bash
+bash scripts/download_model.sh --model meta-llama/Llama-3.2-1B-Instruct   # Download the base model and run a sanity check
+python -m pkg_halluc.package_loader.train_test_hallu_split --data_dir data/Qwen_3B # Create the 90/10 train/test split
+bash scripts/build_data.sh --config model_config/default.json              # Build unlearning data from data.main_path
+
+bash scripts/train_ga.sh        --model **meta-llama/Llama-3.2-1B-Instruct**
+bash scripts/train_npo.sh       --model meta-llama/Llama-3.2-1B-Instruct
+bash scripts/train_ga_plain.sh  --model meta-llama/Llama-3.2-1B-Instruct
+bash scripts/train_npo_plain.sh --model meta-llama/Llama-3.2-1B-Instruct
+
+bash scripts/eval.sh --tag base      --model-path models/meta-llama/Llama-3.2-1B-Instruct
+bash scripts/eval.sh --tag ga        --model-path checkpoints/Llama-3.2-1B-Instruct_ga
+bash scripts/eval.sh --tag npo       --model-path checkpoints/Llama-3.2-1B-Instruct_npo
+bash scripts/eval.sh --tag ga_plain  --model-path checkpoints/Llama-3.2-1B-Instruct_ga_plain
+bash scripts/eval.sh --tag npo_plain --model-path checkpoints/Llama-3.2-1B-Instruct_npo_plain
+bash scripts/report.sh   # Combine evaluation runs into final tables and CSV files
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --stage all
+
+```
+
+Or run the full pipeline:
+
+```bash
+bash scripts/quickstart.sh --config model_config/llama3.2-1b.json
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --stage all \
+  --layers 10 12 14 --multipliers 0 0.5 1
 ```

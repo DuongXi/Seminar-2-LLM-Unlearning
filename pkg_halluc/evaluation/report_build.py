@@ -1,4 +1,4 @@
-"""Gộp kết quả eval của các method thành bảng tỉ lệ hallucination (tổng và theo từng ngữ cảnh)."""
+"""Combine method evaluation results into overall and context-specific hallucination tables."""
 from __future__ import annotations
 
 import argparse
@@ -12,20 +12,20 @@ METHOD_TAGS: list[tuple[str, str]] = [
     ("base", "Base"),
     ("ga", "GA"),
     ("npo", "NPO"),
-    ("ga_plain", "GA-plain (không tri-mask)"),
-    ("npo_plain", "NPO-plain (không tri-mask)"),
+    ("ga_plain", "GA-plain (no Tri-Mask)"),
+    ("npo_plain", "NPO-plain (no Tri-Mask)"),
 ]
 
 CONTEXT_LABELS = {
     "install_cmd": "install_cmd (pip install trong code sinh ra)",
-    "nl_query_1": "nl_query_1 (hỏi tiếp: code này cần package gì)",
-    "nl_query_2": "nl_query_2 (hỏi tiếp: gợi ý package cho việc này)",
-    "bare_import": "bare_import (câu lệnh `import` trần, không cần pip install)",
+    "nl_query_1": "nl_query_1 (packages required by this code)",
+    "nl_query_2": "nl_query_2 (package recommendations for this task)",
+    "bare_import": "bare_import (import statement without pip install)",
 }
 
 
 def safe_len(list_repr: Any) -> int:
-    """Đếm phần tử của list (hoặc chuỗi biểu diễn list), lỗi parse thì trả 0."""
+    """Count list elements, returning zero if a string representation cannot be parsed."""
     try:
         return len(ast.literal_eval(list_repr)) if isinstance(list_repr, str) else len(list_repr)
     except (ValueError, SyntaxError):
@@ -33,13 +33,13 @@ def safe_len(list_repr: Any) -> int:
 
 
 def rate(h: float, v: float) -> float:
-    """Tỉ lệ hallucination (%) = h / (h + v), NaN nếu không có package nào."""
+    """Return the hallucination rate as a percentage, or NaN when no packages exist."""
     t = h + v
     return 100.0 * h / t if t else float("nan")
 
 
 def read_hallucination_totals(tag: str, eval_runs_dir: Path) -> tuple[float, dict[str, float]]:
-    """Đọc FINAL_RESULTS.csv (và import_scan_results.csv) của 1 tag, trả (tỉ lệ tổng, tỉ lệ theo ngữ cảnh)."""
+    """Read a tag's result files and return overall and context-specific rates."""
     run_dir = eval_runs_dir / tag
     df = pd.read_csv(run_dir / "FINAL_RESULTS.csv", index_col=0)
     row = df.loc["Totals"]
@@ -70,7 +70,7 @@ def read_hallucination_totals(tag: str, eval_runs_dir: Path) -> tuple[float, dic
 
 
 def build_report(eval_runs_dir: Path, tags: list[tuple[str, str]] | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Dựng bảng tỉ lệ hallucination tổng và bảng theo ngữ cảnh cho các tag có trong eval_runs_dir."""
+    """Build overall and context-specific hallucination tables for available evaluation tags."""
     tags = tags if tags is not None else METHOD_TAGS
     tags = [(t, name) for (t, name) in tags if (eval_runs_dir / t).is_dir()]
 
@@ -80,7 +80,7 @@ def build_report(eval_runs_dir: Path, tags: list[tuple[str, str]] | None = None)
         try:
             rate, ctx = read_hallucination_totals(tag, eval_runs_dir)
         except Exception as e:
-            print(f"[CẢNH BÁO] không đọc được kết quả cho '{tag}': {e}")
+            print(f"[Warning] Could not read results for '{tag}': {e}")
             rate, ctx = float("nan"), {}
         hall_rates[tag] = rate
         context_rows.append({"Variant": display_name, **ctx})
@@ -98,7 +98,7 @@ def build_report(eval_runs_dir: Path, tags: list[tuple[str, str]] | None = None)
 
 
 def save_report(hall_table: pd.DataFrame, context_table: pd.DataFrame, out_dir: Path) -> tuple[str, str]:
-    """Lưu 2 bảng ra CSV trong out_dir, trả về 2 đường dẫn."""
+    """Save both result tables as CSV files and return their paths."""
     out_dir.mkdir(parents=True, exist_ok=True)
     table1_path = out_dir / "table1_hallucination_rate.csv"
     context_path = out_dir / "table1_by_context.csv"
@@ -111,7 +111,7 @@ def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--eval-runs-dir", required=True, type=Path)
     ap.add_argument("--out-dir", required=True, type=Path)
-    ap.add_argument("--model-name", default=None, help="Tên model, chỉ để in ở đầu bảng")
+    ap.add_argument("--model-name", default=None, help="Model name shown in the report header")
     return ap.parse_args()
 
 
@@ -120,12 +120,12 @@ def main() -> None:
     hall_table, context_table = build_report(args.eval_runs_dir)
     if args.model_name:
         print(f"Model: {args.model_name}\n")
-    print("Bảng 1 -- Package Hallucination Rate:")
+    print("Table 1 -- Package Hallucination Rate:")
     print(hall_table.set_index("Variant").to_string())
-    print("\nTheo từng mode:")
+    print("\nBy context:")
     print(context_table.to_string(index=False))
     table1_path, context_path = save_report(hall_table, context_table, args.out_dir)
-    print(f"\nĐã lưu: {table1_path}\nĐã lưu: {context_path}")
+    print(f"\nSaved: {table1_path}\nSaved: {context_path}")
 
 
 if __name__ == "__main__":

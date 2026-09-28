@@ -1,34 +1,34 @@
 
-## `common/` -- dùng chung nhiều bước
+## `common/` -- shared utilities
 
-| File | Vai trò  | 
+| File | Responsibility |
 | --- | --- |
-| `model_presets.py` | Bảng tên preset model -> id Hugging Face 
-| `model_setup.py` | Library Tải model, build model + tokenizer, sinh thử kiểm tra môi trường 
-| `download_model.py` | Tải base model + sanity-check
-| `read_config.py` | Đọc `model_config/*.json`
-| `tri_mask_utils.py` | Prefix prompt, đọc dữ liệu tri-mask, collator, LoRA, `load_model_auto` (train GA/NPO và eval) 
+| `model_presets.py` | Maps model preset names to Hugging Face IDs |
+| `model_setup.py` | Downloads and initializes models/tokenizers; runs a generation sanity check |
+| `download_model.py` | Downloads a base model and optionally runs a sanity check |
+| `read_config.py` | Reads `model_config/*.json` and exports shell variables |
+| `tri_mask_utils.py` | Prompt prefixes, Tri-Mask loading/collation, LoRA, and `load_model_auto` |
 
-## `package_loader/` -- dataset và dữ liệu tri-mask
+## `package_loader/` -- dataset and Tri-Mask data
 
-| File | Vai trò  
-| --- | --- | 
-| `prompt_config.py` | Prompt hỏi package, thông số token theo dòng model  
-| `utils.py` | Setup tokenizer, đọc CSV/JSONL, parse package, map token-ký tự
-| `unlearn_loader.py` | `PackageUnlearningDataset` (tập forget/retain) và các dataloader  
-| `tsv_loader.py` | Dataset/dataloader theo định dạng TSV 
-| `generate_tri_mask.py` | Dựng record tri-mask (0 bỏ qua, 1 retain, 2 forget) từ dataset  
-| `build_tri_mask_data.py` | Dựng file JSONL retain/forget cho GA/NPO  | 
+| File | Responsibility |
+| --- | --- |
+| `prompt_config.py` | Package-query prompts and model-family token settings |
+| `utils.py` | Tokenizer setup, CSV/JSONL loading, package parsing, and token/character mapping |
+| `unlearn_loader.py` | `PackageUnlearningDataset` and forget/retain dataloaders |
+| `tsv_loader.py` | TSV datasets and dataloaders |
+| `generate_tri_mask.py` | Builds Tri-Mask records (0=ignore, 1=retain, 2=forget) |
+| `build_tri_mask_data.py` | Writes retain/forget JSONL datasets for GA/NPO |
 
-## `training/` -- train các method
+## `training/` -- training methods
 
-| File | Vai trò  
-| --- | ---  | 
-| `tri_mask/train_tri_mask.py` | Train GA/NPO tri-mask trên dữ liệu tĩnh, có early stopping (val tách từ retain)  
-| `tri_mask/ga_trainer.py` | `GradientAscentTrainer`  
-| `tri_mask/npo_trainer.py` | `NPOTrainer`  
-| `plain/train_plain.py` | Train GA-plain/NPO-plain
-| `plain/plain_trainers.py` | `GAPlainTrainer`, `NPOPlainTrainer`  
+| File | Responsibility |
+| --- | --- |
+| `tri_mask/train_tri_mask.py` | GA/NPO Tri-Mask training with optional retain-only validation and early stopping |
+| `tri_mask/ga_trainer.py` | `GradientAscentTrainer` |
+| `tri_mask/npo_trainer.py` | `NPOTrainer` |
+| `plain/train_plain.py` | GA-plain/NPO-plain training |
+| `plain/plain_trainers.py` | `GAPlainTrainer` and `NPOPlainTrainer` |
 
-## `evaluation/` -- đánh giá và báo cáo
+## `evaluation/` -- evaluation and reports
 

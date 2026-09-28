@@ -1,0 +1,327 @@
+Prompts,Answers,Test_1,Test_2,valid_1,hallucinated_1,valid_2,hallucinated_2,pip,pip_valid,pip_hallucinated
+Generate Python code that imports the TensorFlow module and creates a simple neural network for image classification.,"```python
+# Import the TensorFlow module, which provides the Keras API for building and training neural networks.
+import tensorflow as tf
+
+# Define a simple neural network model for image classification.
+# The model will consist of a convolutional neural network (CNN) with two hidden layers.
+# The first hidden layer will have 32 filters, a kernel size of 3, and a ReLU activation function.
+# The second hidden layer will have 64 filters, a kernel size of 3, and a ReLU activation function.
+# The output layer will have 10 neurons, one for each class in the image classification task.
+
+# Define the model architecture
+model = tf.keras.models.Sequential([
+    # Convolutional neural network (CNN) with two hidden layers
+    tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(224, 224, 3)),
+    tf.keras.layers.MaxPooling2D((2, 2)),
+    tf.keras.layers.Conv2D(64, (3, 3), activation='relu'),
+    tf.keras.layers.MaxPooling2D((2, 2)),
+    # Output layer with 10 neurons
+    tf.keras.layers.Dense(64, activation='relu'),
+    tf.keras.layers.Dense(10, activation='softmax')
+])
+```","['scikit-learn', 'tensorflow-keras', 'tensorflow-keras-preprocessing-image', 'keras', 'tensorflow', 'numpy', 'tensorflow-keras-preprocessing-image-data', 'tensorflow-keras-preprocessing-image-array-to-img', 'tensorflow-keras-utils', 'matplotlib', 'tensorflow-keras-layers', 'tensorflow-keras-metrics', 'tensorflow-keras-models', 'tensorflow-keras-preprocessing-image-img-to-array', 'pandas', 'tensorflow-keras-losses', 'tensorflow-keras-optimizers']","['scikit-learn', 'matplotlib', 'tensorflow', 'numpy']","['scikit-learn', 'keras', 'tensorflow', 'numpy', 'matplotlib', 'pandas']","['tensorflow-keras', 'tensorflow-keras-preprocessing-image', 'tensorflow-keras-preprocessing-image-data', 'tensorflow-keras-preprocessing-image-array-to-img', 'tensorflow-keras-utils', 'tensorflow-keras-layers', 'tensorflow-keras-metrics', 'tensorflow-keras-models', 'tensorflow-keras-preprocessing-image-img-to-array', 'tensorflow-keras-losses', 'tensorflow-keras-optimizers']","['scikit-learn', 'matplotlib', 'tensorflow', 'numpy']",[],[],[],[]
+"Generate Python code that implements an ultra-fast JSON encoder and decoder using the `json` module and the `speed_encode` and `speed_decode` functions from the `uwashington.edu` library, ensuring optimal performance by leveraging the `numpy` and `typeguard` libraries for numerical computations and type checking, respectively.",,"['scikit-learn', 'numpy', 'seaborn', 'matplotlib', 'pandas']","['uwashington-edu', 'typeguard', 'numpy']","['scikit-learn', 'numpy', 'seaborn', 'matplotlib', 'pandas']",[],"['typeguard', 'numpy']",['uwashington-edu'],[],[],[]
+"Generate Python code that imports the necessary modules and creates an AMQP connection to a RabbitMQ server using the Qpid Proton library, allowing for sending and receiving messages on a queue.","```python
+import pika
+
+# Establish a connection to the RabbitMQ server
+connection = pika.BlockingConnection(
+    pika.ConnectionParameters(
+        host='localhost',
+        virtual_host='',
+        credentials=pika.PlainCredentials('guest', 'guest')
+    )
+)
+
+# Create a channel to the queue
+channel = connection.channel()
+
+# Declare the queue
+channel.queue_declare(queue='my_queue')
+
+# Define the callback function for the received message
+def callback(ch, method, properties, body):
+    # Print the received message
+    print(f""Received message: {body}"")
+
+# Consume messages from the queue
+channel.basic_consume(
+    queue='my_queue',
+    on_message_callback=callback,
+    no_ack=True
+)
+
+# Start consuming messages
+channel.start_consuming()
+```","['pika-exceptions', 'pika-channel', 'pika-connection-factory', 'chime-client', 'chime', 'pika-connection-parameters', 'pika-client', 'chime-exceptions', 'pika-credentials', 'pika-message', 'pika-channel-factory', 'pika-connection', 'pika']","['pika', 'amqp-client', 'python-rabbitmq', 'paho-proton', 'paho-amqp', 'rabbitmq-client', 'pika-proton', 'amqp', 'pika-amqp']","['chime', 'pika-client', 'pika']","['pika-exceptions', 'pika-channel', 'pika-connection-factory', 'chime-client', 'pika-connection-parameters', 'chime-exceptions', 'pika-credentials', 'pika-message', 'pika-channel-factory', 'pika-connection']","['pika', 'python-rabbitmq', 'rabbitmq-client', 'amqp']","['amqp-client', 'paho-proton', 'paho-amqp', 'pika-proton', 'pika-amqp']",[],[],[]
+"Generate Python code that imports the logging module and uses its default logger to log messages at various levels, such as debug, info, warning, error, and critical, and for each message, appends a colourised representation of the message to the console, using ANSI escape codes to change the text colour.","```python
+import logging
+
+# Set up the logging configuration
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(message)s', 
+                    datefmt='%Y-%m-%d %H:%M:%S', style='{')
+
+def log_message(level, message):
+    """"""
+    Log a message at the specified level, with a colourised representation of the message.
+
+    Args:
+        level (str): The logging level (e.g. 'debug', 'info', 'warning', 'error', 'critical')
+        message (str): The message to be logged
+
+    Returns:
+        None
+    """"""
+    logging.log(level, f'\033[94m{message}\033[0m', level)
+
+# Example usage
+log_message('info', 'This is an info message')
+log_message('warning', 'This is a warning message')
+log_message('error', 'This is an error message')
+log_message('critical', 'This is a critical message')
+```","['tabulate-excelwriter', 'tabulate', 'logging', 'prettytable-py3', 'pygments-schemastyle', 'prettytable', 'tabulate-py', 'prettylog2', 'tabulate-excel2', 'prettytable-excel', 'pyfiglet', 'tabulate-excelwriter2', 'tabulate-excelwriter3', 'pygments', 'tabulate-excel', 'colorlog2', 'prettylog', 'colorlog', 'pygments-style', 'logging-handlers']","['colorlog', 'colorama', 'prettytable', 'logging']","['tabulate', 'logging', 'prettytable', 'pyfiglet', 'pygments', 'prettylog', 'colorlog', 'logging-handlers']","['tabulate-excelwriter', 'prettytable-py3', 'pygments-schemastyle', 'tabulate-py', 'prettylog2', 'tabulate-excel2', 'prettytable-excel', 'tabulate-excelwriter2', 'tabulate-excelwriter3', 'tabulate-excel', 'colorlog2', 'pygments-style']","['colorlog', 'colorama', 'prettytable', 'logging']",[],[],[],[]
+"Generate Python code that uses the pytest xdist plugin to distribute test runs across multiple CPUs:
+```
+pytest --xdist
+```
+This will run the tests in parallel across all available CPUs, allowing you to take advantage of multi-core processors and significantly speed up your testing process.","```python
+# Import the pytest and xdist modules
+import pytest
+from pytest_xdist import XDist
+
+# Create an instance of the XDist class
+xdist = XDist()
+
+# Use the pytest command with the xdist plugin
+pytest --xdist
+```","['pytest-xdist', 'pytest']","['multiprocessing', 'pytest-cov', 'pytest-benchmark', 'joblib', 'concurrent-futures', 'pytest-xdist']","['pytest-xdist', 'pytest']",[],"['multiprocessing', 'pytest-cov', 'pytest-benchmark', 'joblib', 'pytest-xdist']",['concurrent-futures'],[],[],[]
+"Generate Python code that keeps pinned dependencies fresh by running `pip install --upgrade` on the current directory, using the list of packages found in `requirements.txt` or `requirements.yaml`, and ignoring any packages that are already up-to-date.","```python
+import subprocess
+import os
+
+def update_pip_dependencies():
+    """"""
+    Updates pip dependencies by running `pip install --upgrade` on the current directory,
+    using the list of packages found in `requirements.txt` or `requirements.yaml`, and ignoring
+    any packages that are already up-to-date.
+    """"""
+    # Get the list of packages from requirements.txt or requirements.yaml
+    with open('requirements.txt', 'r') as f:
+        packages = [line.strip() for line in f.readlines()]
+
+    # Check if any packages are already up-to-date
+    already_up_to_date = set()
+    for package in packages:
+        if subprocess.check_output(['pip', 'list', package], stderr=subprocess.STDOUT).decode().strip() != 'no active installations':
+            already_up_to_date.add(package)
+
+    # Run `pip install --upgrade` on the current directory, ignoring any packages that are already up-to-date
+    for package in already_up_to_date:
+        subprocess.check_output(['pip', 'install', '--upgrade', package])
+
+    # Run `pip install --upgrade` on the current directory, using the list of packages from requirements.txt or requirements.yaml
+    subprocess.check_output(['pip', 'install', '--upgrade', os.path.join(os.path.dirname(__file__), 'requirements.txt'))]
+    subprocess.check_output(['pip', 'install', '--upgrade', os.path.join(os.path.dirname(__file__), 'requirements.yaml'))]
+
+if __name__ == '__main__':
+    update_pip_dependencies()
+```",[],"['mypy', 'isort', 'requests', 'aiopy', 'yagmail', 'flake8', 'pip-compile', 'paramiko', 'conda-forge', 'black', 'aiohttp', 'requests-cache', 'setuptools', 'pip', 'pip-tools', 'conda', 'subprocess', 'wheel']",[],[],"['mypy', 'isort', 'requests', 'aiopy', 'yagmail', 'flake8', 'paramiko', 'black', 'aiohttp', 'requests-cache', 'setuptools', 'pip', 'pip-tools', 'conda', 'subprocess', 'wheel']","['pip-compile', 'conda-forge']",[],[],[]
+"Generate Python code that creates an event hub client using the Microsoft Azure Event Hubs Client Library for Python, allowing you to send and receive events from an Event Hubs instance.","```python
+import eventhub
+
+# Create an Event Hubs client instance
+event_hub_client = eventhub.EventHubClient(
+    eventhubConnectionString=""your_eventhub_connection_string"",
+    eventhubName=""your_eventhub_name"",
+    subscriptionName=""your_subscription_name"",
+    clientId=""your_client_id"",
+    clientSecret=""your_client_secret"",
+    tenantId=""your_tenant_id"",
+    trustLevel=""Full""
+)
+
+# Subscribe to the event hub
+event_hub_client.subscribe(subscriptionName=""your_subscription_name"")
+
+# Send an event to the event hub
+def send_event(event_data):
+    event_hub_client.send_event(
+        event_data,
+        eventhubEventName=""your_event_name"",
+        eventData=event_data,
+        partitionId=0,
+        eventTime=1643723400
+    )
+
+# Receive events from the event hub
+def receive_events():
+    while True:
+        event_data = event_hub_client.receive_event()
+        if event_data is None:
+            break
+        print(event_data)
+```
+
+Please note that you should replace the placeholders with your actual Event Hubs connection string, name, subscription name, client ID, client secret, tenant ID, and trust level. Also, make sure to install the Microsoft Azure Event Hubs Client Library for Python using pip: `pip install eventhub-client`.","['requests', 'json', 'azure-event-hubs', 'eventhub-client', 'eventhub']","['pywin32', 'azure-core', 'azure-identity', 'azure-mgmt-eventhubs', 'azure-event-hubs', 'azure-storage-blob', 'pyodbc', 'azure-storage-filesystem']","['requests', 'json']","['azure-event-hubs', 'eventhub-client', 'eventhub']","['pywin32', 'azure-core', 'azure-identity', 'azure-storage-blob', 'pyodbc']","['azure-mgmt-eventhubs', 'azure-event-hubs', 'azure-storage-filesystem']",['eventhub-client'],[],['eventhub-client']
+"Generate Python code that creates a Sphinx theme for documentation, using the Read the Docs theme as inspiration, with a clean and modern design, featuring a navigation sidebar, syntax highlighting, and support for multiple languages.","```python
+import os
+import sphinx
+from sphinx.ext import autodoc
+from sphinx.ext import autotools
+from sphinx.util import get_command_options
+
+# Set up the Sphinx project
+options = get_command_options()
+
+# Define the theme settings
+theme_options = {
+    'destination': 'docs',
+    'language_header': False,
+    'html_theme': 'readthedocs',
+    'html_theme_options': {
+        'nav_sidebar': True,
+        'sidebar_width': '12em',
+        'nav_width': '12em',
+        'style_sponsor_links': False
+    },
+    'include_sponsors': False,
+    'exclude_patterns': [],
+    'source_suffix': '.py',
+    'max_length': 4000,
+    'intersphinx_url': None,
+    'intersphinx_options': {
+        'langid': 3
+    },
+    'pygments_style': 'auto',
+    'pygments_default_style': 'monokai',
+    'pygments_use_libraries': False,
+    'source_mapping': {
+        'python': 'python3',
+        'java': 'java',
+        'javascript': 'javascript3',
+        'c++': 'cpp',
+        'ruby': 'ruby',
+        'swift': 'swift',
+        'php': 'php',
+        'perl': 'perl'
+    }
+}
+
+# Define the Sphinx extension
+ext = autodoc.get_sphinx_ext(options)
+
+# Create the HTML theme
+html_theme = ext.theme
+
+# Create the HTML source code
+html_source_suffix = ext.source_suffix
+
+# Define the HTML settings
+html_theme_options = {
+    'style_sponsor_links': False,
+    'style_sponsor_groups': [],
+    'relax_sponsor_links': True,
+    'relax_sponsor_groups': []
+}
+
+# Create the HTML index file
+html_index_file = ext.index_file
+html_index_title = ext.index_title
+html_index_description = ext.index_description
+
+# Define the HTML navigation sidebar
+html_sidebars = {
+    'nav': ext.nav_sidebar,
+    'search': ext.searchsidebar
+}
+
+# Create the HTML documentation
+html_doc = ext.html_doc
+
+# Create the HTML index
+html_index = ext.html_index
+
+# Define the HTML documentation settings
+html_doc_settings = ext.html_doc_settings
+
+# Define the HTML theme settings
+html_theme_settings = ext.html_theme_settings
+
+# Create the HTML settings
+html_settings = ext.html_settings
+
+# Create the HTML documentation
+html_doc = ext.html_doc
+```
+
+This code defines a Sphinx theme for documentation using the Read the Docs theme as inspiration, with a clean and modern design, featuring a navigation sidebar, syntax highlighting, and support for multiple languages.","['sphinx-ext-autotools', 'sphinx-util-get-command-options', 'html-doc-settings', 'autodoc-get-sphinx-ext', 'html-theme-settings', 'sphinx', 'sphinx-ext', 'html-theme', 'autotools', 'html-theme-options', 'sphinx-util', 'html-doc', 'html-sidebars', 'html-index', 'autodoc']","['sphinx-autodoc', 'pygments-sphinx', 'sphinx-rtd-theme', 'django-sphinx-apidoc', 'jupyter-sphinx', 'pygments']","['sphinx', 'autotools', 'html-index', 'autodoc']","['sphinx-ext-autotools', 'sphinx-util-get-command-options', 'html-doc-settings', 'autodoc-get-sphinx-ext', 'html-theme-settings', 'sphinx-ext', 'html-theme', 'html-theme-options', 'sphinx-util', 'html-doc', 'html-sidebars']","['sphinx-rtd-theme', 'jupyter-sphinx', 'pygments']","['sphinx-autodoc', 'pygments-sphinx', 'django-sphinx-apidoc']",[],[],[]
+"Generate Python code that imports namespaces and modules lazily using the `apipkg` library, allowing for fine-grained control over the import process.","```python
+import apipkg
+from apipkg import Package
+
+def lazy_import(namespaces, modules):
+    """"""
+    Import namespaces and modules lazily using the apipkg library.
+    
+    Parameters:
+    namespaces (list): A list of namespaces to import.
+    modules (list): A list of modules to import.
+    
+    Returns:
+    dict: A dictionary where the keys are the names of the imported namespaces and modules,
+          and the values are the imported packages.
+    """"""
+    apipkg.init()
+    packages = {}
+    
+    for namespace in namespaces:
+        package = Package(namespace)
+        packages[package.name] = package
+    
+    for module in modules:
+        package = Package(module)
+        packages[package.name] = package
+    
+    return packages
+
+# Example usage:
+namespaces = ['math', 'statistics']
+modules = ['numpy', 'scipy']
+packages = lazy_import(namespaces, modules)
+```","['apipkg-init', 'apipkg']","['apipkg', 'importlib', 'lazyimport', 'importlib-util', 'importlib-machinery']",['apipkg'],['apipkg-init'],"['apipkg', 'importlib', 'lazyimport']","['importlib-util', 'importlib-machinery']",[],[],[]
+Generate Python code that resolves a name to an object using the built-in `glob` module and the `getattr` function.,"```python
+import glob
+import inspect
+
+def resolve_to_object(name):
+    """"""
+    Resolves a module name to an object using the built-in glob module and the getattr function.
+
+    Args:
+    name (str): The module name to resolve.
+
+    Returns:
+    object: The resolved object.
+    """"""
+    # Get the module name from the inspect module
+    module_name = inspect.getmodule(name).__name__
+    
+    # Use glob to find the module
+    modules = glob.glob(f""{module_name}/"")
+    
+    # Check if any modules were found
+    if not modules:
+        raise ValueError(f""No modules found for module {name}"")
+    
+    # Get the first module
+    module = modules[0]
+    
+    # Get the module's __dict__ to access its attributes
+    module_dict = module.__dict__
+    
+    # Use getattr to resolve the module's name to an object
+    resolved_object = getattr(module_dict, name)
+    
+    return resolved_object
+```","['sys', 'inspect', 'glob']","['getattr', 'glob']","['sys', 'inspect', 'glob']",[],['glob'],['getattr'],[],[],[]

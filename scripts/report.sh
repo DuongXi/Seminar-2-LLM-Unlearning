@@ -9,15 +9,15 @@ CONFIG_FILE=""
 
 usage() {
     cat <<USAGE
-Cách dùng: report.sh [optional]
-  --config FILE       File config JSON (vd model_config/default.json)
-  --model-name NAME   
+Usage: report.sh [options]
+    --config FILE       JSON configuration file (e.g. model_config/default.json)
+    --model-name NAME   Model name used to label the report
   -h, --help
 USAGE
     exit "${1:-0}"
 }
 
-# Pass 1:  find --config
+# Read the config path before loading config-derived defaults.
 _args=("$@")
 for ((_i = 0; _i < ${#_args[@]}; _i++)); do
     if [ "${_args[$_i]}" = "--config" ]; then

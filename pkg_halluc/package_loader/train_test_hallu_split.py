@@ -8,18 +8,6 @@ import random
 import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
-from typing import List, Tuple
-# Add repo root to sys.path before package imports
-def find_repo_root() -> Path:
-    cur = Path(__file__).resolve().parent
-    for parent in [cur] + list(cur.parents):
-        if (parent / "pkg_halluc").is_dir() and (parent / "data").is_dir():
-            return parent
-    return Path(__file__).resolve().parents[1]
-
-REPO_ROOT = find_repo_root()
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 
 import pandas as pd
 from pkg_halluc.package_loader.unlearn_loader import PackageUnlearningDataset
@@ -30,7 +18,6 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-
 def row_has_hallucination(row: pd.Series) -> bool:
     """Check if a CSV row contains any hallucinated package in any mode or pip"""
     hall_1 = parse_package_list(row.get("hallucinated_1", row.get("hallucination_1", [])))
@@ -38,13 +25,12 @@ def row_has_hallucination(row: pd.Series) -> bool:
     hall_pip = parse_package_list(row.get("pip_hallucinated", [])) if "pip_hallucinated" in row else []
     return len(hall_1) > 0 or len(hall_2) > 0 or len(hall_pip) > 0
 
-
 def process_file(
     csv_path: Path,
     target_count: int = 100,
     train_ratio: float = 0.9,
     seed: int = 42,
-) -> Tuple[List[str], List[str], pd.DataFrame]:
+) -> Tuple[List[str], List[str], pd.DataFrame, pd.DataFrame]:
     """
     Extract target_count unique hallucination prompts from a CSV and split into train and test.
     Returns: (train_prompts, test_prompts, filtered_train_df)
@@ -86,24 +72,20 @@ def process_file(
     assert len(test_prompts) == n_test, f"Expected {n_test} test prompts, got {len(test_prompts)}"
     assert set(train_prompts).isdisjoint(set(test_prompts)), "Train and Test prompts overlap!"
 
-    # Filter original df for train rows
+    # Filter original df for train and test rows
     train_set_prompts = set(train_prompts)
+    test_set_prompts = set(test_prompts)
     train_df = df[df[prompt_col].astype(str).str.strip().isin(train_set_prompts)].copy()
+    test_df = df[df[prompt_col].astype(str).str.strip().isin(test_set_prompts)].copy()
 
-    return train_prompts, test_prompts, train_df
-
+    return train_prompts, test_prompts, train_df, test_df
 
 def main():
     parser = argparse.ArgumentParser(description="Split hallucination prompts per file into Train and Test sets")
     parser.add_argument(
-        "--model",
-        default="llama3.2-3b",
-        help="Model name or family (e.g. llama3.2-3b, qwen2.5-coder-1.5b) to auto-locate data directory",
-    )
-    parser.add_argument(
         "--data_dir",
-        default=None,
-        help="Directory containing the 4 benchmark result CSV files (default: auto-detected based on --model)",
+        required=True,
+        help="Directory containing the benchmark result CSV files",
     )
     parser.add_argument(
         "--out_dir",
@@ -135,8 +117,10 @@ def main():
     print(f"Using data directory: {data_dir}")
     out_dir = Path(args.out_dir) if args.out_dir else (data_dir / "train_test_split")
     train_csv_dir = out_dir / "train_csvs"
+    test_csv_dir = out_dir / "test_csvs"
     out_dir.mkdir(parents=True, exist_ok=True)
     train_csv_dir.mkdir(parents=True, exist_ok=True)
+    test_csv_dir.mkdir(parents=True, exist_ok=True)
 
     csv_files = [
         "LLM_AT_results.csv",
@@ -150,6 +134,7 @@ def main():
     train_meta: Dict[str, List[str]] = {}
     test_meta: Dict[str, List[str]] = {}
     saved_train_csv_paths: List[Path] = []
+    saved_test_csv_paths: List[Path] = []
     
     for idx, fname in enumerate(csv_files):
         csv_path = data_dir / fname
@@ -157,7 +142,7 @@ def main():
             raise FileNotFoundError(f"Result file not found: {csv_path}")
 
         file_seed = args.seed + idx * 1000
-        train_p, test_p, train_df = process_file(
+        train_p, test_p, train_df, test_df = process_file(
             csv_path,
             target_count=args.n_per_file,
             train_ratio=args.train_ratio,
@@ -174,6 +159,11 @@ def main():
         train_csv_path = train_csv_dir / f"{stem}_train.csv"
         train_df.to_csv(train_csv_path, index=False, encoding="utf-8")
         saved_train_csv_paths.append(train_csv_path)
+
+        # Save filtered test CSV
+        test_csv_path = test_csv_dir / f"{stem}_test.csv"
+        test_df.to_csv(test_csv_path, index=False, encoding="utf-8")
+        saved_test_csv_paths.append(test_csv_path)
 
     print("-" * 70)
     # Verification of zero leakage
@@ -212,23 +202,37 @@ def main():
             ensure_ascii=False,
         )
 
+    # Build the normalized train master dataset.
     train_csv_strs = [str(p) for p in saved_train_csv_paths]
-    dataset = PackageUnlearningDataset(
+    train_dataset = PackageUnlearningDataset(
         data_source=train_csv_strs,
         split_type="all",
         query_modes=[1, 2],
         auto_save=False,
     )
     master_train_file = out_dir / "master_train.json"
-    dataset.save_to_file(master_train_file)
+    train_dataset.save_to_file(master_train_file)
+
+    # Build the normalized test master dataset.
+    test_csv_strs = [str(p) for p in saved_test_csv_paths]
+    test_dataset = PackageUnlearningDataset(
+        data_source=test_csv_strs,
+        split_type="all",
+        query_modes=[1, 2],
+        auto_save=False,
+    )
+    master_test_file = out_dir / "master_test.json"
+    test_dataset.save_to_file(master_test_file)
 
     # Summary of records
-    forget_records = [r for r in dataset.records if r.split_type == "forget"]
-    retain_records = [r for r in dataset.records if r.split_type == "retain"]
-    print(f"- Forget records: {len(forget_records)}")
-    print(f"- Retain records: {len(retain_records)}")
+    train_forget = [r for r in train_dataset.records if r.split_type == "forget"]
+    train_retain = [r for r in train_dataset.records if r.split_type == "retain"]
+    test_forget = [r for r in test_dataset.records if r.split_type == "forget"]
+    test_retain = [r for r in test_dataset.records if r.split_type == "retain"]
+    print(f"- Train records: {len(train_dataset.records)} ({len(train_forget)} forget, {len(train_retain)} retain)")
+    print(f"- Test records:  {len(test_dataset.records)} ({len(test_forget)} forget, {len(test_retain)} retain)")
+    print(f"Master files saved: {master_train_file} & {master_test_file}")
 
 
 if __name__ == "__main__":
     main()
-

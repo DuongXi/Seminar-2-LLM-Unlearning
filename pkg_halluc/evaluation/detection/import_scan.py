@@ -1,4 +1,4 @@
-"""Quét câu lệnh import trần trong code sinh ra để tính tỉ lệ import hallucination."""
+"""Scan generated code for bare imports and measure import hallucination rates."""
 import argparse
 import ast
 import csv
@@ -10,7 +10,7 @@ import pandas as pd
 
 
 def normalize_python_package(name: str) -> str:
-    """Chuẩn hoá tên package theo PEP 503 (gộp dấu phân cách, viết thường)."""
+    """Normalize a package name according to PEP 503."""
     if not name or not isinstance(name, str):
         return name
     name = re.sub(r"\d+\.\s*", "", name)
@@ -47,7 +47,7 @@ STDLIB_MODULES = set(sys.stdlib_module_names) if hasattr(sys, "stdlib_module_nam
 
 
 def extract_top_level_imports(code: str):
-    """Lấy tên module cấp cao nhất từ các câu lệnh import, code lỗi cú pháp thì dùng regex."""
+    """Extract top-level module names from imports, using regex for invalid Python."""
     modules = []
     try:
         tree = ast.parse(code)
@@ -72,7 +72,7 @@ def extract_top_level_imports(code: str):
 
 
 def classify_imports(modules, valid_pypi_names, false_positives):
-    """Phân loại module thành valid/hallucinated, bỏ stdlib và các false positive."""
+    """Classify modules as valid or hallucinated, excluding stdlib and false positives."""
     valid, hallucinated = [], []
     seen = set()
     for m in modules:
@@ -91,7 +91,7 @@ def classify_imports(modules, valid_pypi_names, false_positives):
 
 
 def load_name_set(json_or_csv_path):
-    """Đọc tập tên package từ file JSON hoặc CSV (mỗi dòng 1 tên)."""
+    """Load package names from a JSON or CSV file."""
     if json_or_csv_path.endswith(".json"):
         with open(json_or_csv_path, encoding="utf-8") as f:
             return set(json.load(f))
@@ -105,7 +105,7 @@ def load_name_set(json_or_csv_path):
 
 
 def scan_master_file(master_json_path, valid_pypi_names, false_positives, answer_key="Answers"):
-    """Quét từng dòng master, trả về (records, tổng valid, tổng hallucinated)."""
+    """Scan each master record and return records plus valid/hallucinated totals."""
     records = []
     with open(master_json_path, encoding="utf-8") as f:
         for line in f:

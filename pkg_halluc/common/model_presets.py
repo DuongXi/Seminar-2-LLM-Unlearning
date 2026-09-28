@@ -29,7 +29,7 @@ MODEL_PRESETS: dict[str, str] = {
 
 def resolve_model_name(name: str) -> str:
     """Preset name to full id HF"""
-    return MODEL_PRESETS.get(name, name)
+    return MODEL_PRESETS.get(name.lower(), name)
 
 
 def resolve_model_suffix(name: str, explicit_suffix: str | None = None) -> str:

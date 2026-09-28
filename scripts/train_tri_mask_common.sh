@@ -25,27 +25,26 @@ CONFIG_FILE=""
 
 usage() {
     cat <<USAGE
-Cách dùng: train_${LOSS_FUNCTION}.sh [tuỳ chọn]
-  --config FILE                 config JSON
-                                
-  --model TEN_HOAC_DUONG_DAN     Id HF or preset in models/ (default: $MODEL)
-  --model-path DUONG_DAN        
-  --retain-file FILE              retain tri-mask file (default: auto-detect theo model suffix)
-  --forget-file FILE              forget tri-mask file (default: auto-detect theo model suffix)
-  --save-tag TAG                  checkpoint in checkpoints/ (default: $LOSS_FUNCTION)
-  --lr FLOAT                       Learning rate (default: $LR)
-  --epochs INT                      Train epoch (default: $EPOCHS)
-  --seed INT                         Random seed (default: $SEED)
-  --dtype auto|bfloat16|float16       dtype (default: $DTYPE)
-  --val-ratio FLOAT                    Split ratio for early stopping (default: $VAL_RATIO)
-  --eval-steps INT                      Eval (and save) for N optimizer step (default: $EVAL_STEPS)
-  --early-stopping-patience INT          Stop after a number of evaluations without improvement (default: $EARLY_STOP_PATIENCE)
-  --early-stopping-threshold FLOAT        Minimum reduction in eval_loss required to count as an improvement (default: $EARLY_STOP_THRESHOLD)
-  --disable-early-stopping                 Train for the full number of epochs on the entire dataset, without separating an evaluation split
-  --use-lora                           Train LoRA adapter
-  --lora-rank INT                       LoRA rank (default: $LORA_RANK; set when use --use-lora)
-  --resume-from DUONG_DAN                 Resume full-parameter weights from an existing checkpoint.
-  --out-dir DUONG_DAN                       Override the default output directory checkpoints/<model>_<tag>
+Usage: train_${LOSS_FUNCTION}.sh [options]
+    --config FILE                         JSON configuration file
+    --model HF_ID_OR_PRESET               Hugging Face ID or preset (default: $MODEL)
+    --model-path PATH                     Local model checkpoint path
+    --retain-file FILE                    Retain tri-mask dataset (default: use model suffix)
+    --forget-file FILE                    Forget tri-mask dataset (default: use model suffix)
+    --save-tag TAG                        Checkpoint name (default: $LOSS_FUNCTION)
+    --lr FLOAT                            Learning rate (default: $LR)
+    --epochs INT                          Training epochs (default: $EPOCHS)
+    --seed INT                            Random seed (default: $SEED)
+    --dtype auto|bfloat16|float16          Compute dtype (default: $DTYPE)
+    --val-ratio FLOAT                     Early-stopping validation ratio (default: $VAL_RATIO)
+    --eval-steps INT                      Evaluation/checkpoint interval (default: $EVAL_STEPS)
+    --early-stopping-patience INT         Evaluations without improvement before stopping (default: $EARLY_STOP_PATIENCE)
+    --early-stopping-threshold FLOAT      Minimum eval-loss improvement (default: $EARLY_STOP_THRESHOLD)
+    --disable-early-stopping              Train for all epochs without a validation split
+    --use-lora                            Train a LoRA adapter
+    --lora-rank INT                       LoRA rank (default: $LORA_RANK; requires --use-lora)
+    --resume-from PATH                    Resume from a full-parameter checkpoint
+    --out-dir PATH                        Override checkpoints/<model>_<tag>
   -h, --help
 
 USAGE
@@ -54,7 +53,7 @@ USAGE
 
 MAIN_PATH=""
 
-# Pass 1: Look for `--config` as default 
+# Read the config path before loading defaults from it.
 _args=("$@")
 for ((_i = 0; _i < ${#_args[@]}; _i++)); do
     if [ "${_args[$_i]}" = "--config" ]; then
@@ -77,13 +76,13 @@ if [ -n "$CONFIG_FILE" ]; then
     [ -n "${CFG_EARLY_STOPPING_THRESHOLD:-}" ] && EARLY_STOP_THRESHOLD="$CFG_EARLY_STOPPING_THRESHOLD"
     [ "${CFG_USE_LORA:-}" = "true" ] && USE_LORA="true"
     [ -n "${CFG_LORA_RANK:-}" ] && LORA_RANK="$CFG_LORA_RANK"
-    echo "[train_$LOSS_FUNCTION] da nap config: $CONFIG_FILE (methods.$LOSS_FUNCTION)"
+    echo "[train_$LOSS_FUNCTION] Loaded config: $CONFIG_FILE (methods.$LOSS_FUNCTION)"
 fi
 
 RETAIN_FILE=""
 FORGET_FILE=""
 
-# Pass 2: handle value overrides from the config
+# Apply command-line overrides.
 while [ $# -gt 0 ]; do
     case "$1" in
         --config) shift 2 ;; 
@@ -107,7 +106,7 @@ while [ $# -gt 0 ]; do
         --resume-from) RESUME_FROM="$2"; shift 2 ;;
         --out-dir) OUT_DIR="$2"; shift 2 ;;
         -h|--help) usage 0 ;;
-        *) echo "tuỳ chọn không rõ: $1" >&2; usage 1 ;;
+        *) echo "Unknown option: $1" >&2; usage 1 ;;
     esac
 done
 

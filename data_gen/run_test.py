@@ -9,10 +9,10 @@ import logging
 # Runs an entire experiment for a single model
 # Given a specific model name in ./Models:
 #   4 files need to be in the "./Data" directory:
-#       1. json of LLM generated prompts from all-time popular packages named "./LLM_AT.json"
-#       2. json of LLM generated prompts from 2023 (last year) most popular packages named"./LLM_LY.json"
-#       3. json of Stack Overflow questions from all-time named "./SO_AT.json.json"
-#       4. json of Stack Overflow questions from last year named "./SO_LY.json.json"
+#       LLM-generated prompts for all-time popular packages: "./LLM_AT.json"
+#       LLM-generated prompts for 2023 popular packages: "./LLM_LY.json"
+#       Stack Overflow questions from all time: "./SO_AT.json.json"
+#       Stack Overflow questions from last year: "./SO_LY.json.json"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("model_name", type=str, help="File name, without extension, of the model being tested")

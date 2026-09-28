@@ -9,10 +9,10 @@ from pkg_halluc.common import model_setup
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--model", required=True, help="Tên preset model")
-    ap.add_argument("--models-dir", required=True, type=Path, help="Thư mục lưu model đã tải")
+    ap.add_argument("--model", required=True, help="Model preset or Hugging Face ID")
+    ap.add_argument("--models-dir", required=True, type=Path, help="Directory for downloaded models")
     ap.add_argument("--dtype", default="auto", choices=["auto", "bfloat16", "float16"])
-    ap.add_argument("--skip-sanity-check", action="store_true", help="Bỏ qua bước sinh thử 1 câu")
+    ap.add_argument("--skip-sanity-check", action="store_true", help="Skip the generation sanity check")
     return ap.parse_args()
 
 
