@@ -2,3 +2,5 @@ models/*
 temp/*
 logs/hallu
 logs/hallu_pkg
+legacy/*
+steer/*

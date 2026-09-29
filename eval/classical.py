@@ -152,6 +152,11 @@ def main():
 
     model_path = args.path
     forget_set = args.forgetset
+
+    # Change model loader to before dataloader to mitigate known CUDA errors
+    print(model_path)
+    tokenizer, model = load_model(model_path=model_path)
+
     forget_dataset = load_split(forget_set)
     forget_dataset.set_format("torch", columns=["input_ids", 
                                                 "attention_mask", 
@@ -165,8 +170,6 @@ def main():
                                                     "attention_mask", 
                                                     "labels"
                                                     ])
-    print(model_path)
-    tokenizer, model = load_model(model_path=model_path)
 
     ppl_forget, acc_forget = compute_accuracy(model, tokenizer, forget_dataset)
     print(f"Forget dataset PPL: {ppl_forget}")

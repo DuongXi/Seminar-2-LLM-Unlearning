@@ -77,6 +77,10 @@ def main():
     model_path = args.path
     forget_set = args.forgetset
     approx_set = args.approxset
+
+    # Change model loader to before dataloader to mitigate known CUDA errors
+    tokenizer, model = load_model(model_path=model_path, device_map=device)
+
     forget_dataset = load_from_disk(forget_set)
     forget_dataset.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
     approx_dataset = load_from_disk(approx_set)
@@ -87,7 +91,6 @@ def main():
         retain_dataset.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
     print(model_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer, model = load_model(model_path=model_path, device_map=device)
 
     mia_forget_scores = compute_mia_scores(model, tokenizer, forget_dataset)
     mia_approximate_scores = compute_mia_scores(model,tokenizer, approx_dataset)
