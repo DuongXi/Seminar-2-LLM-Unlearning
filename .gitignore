@@ -2,5 +2,6 @@ models/*
 temp/*
 logs/hallu
 logs/hallu_pkg
+logs/benchmarks
 legacy/*
 steer/*
