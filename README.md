@@ -139,46 +139,106 @@ On Kaggle, checkpoints are written under `/kaggle/working/pkg-halluc/checkpoints
 
 ## Contrastive Activation Addition (CAA)
 
-CAA builds contrastive train and test data from the unlearning split.
+CAA extracts package-level steering vectors from contrastive training records and evaluates pairwise completions. Run commands from the repository root.
 
-### Build Contrastive Data
+### Prepare Data
 
-Set `data.main_path` in the model config, then generate the contrastive datasets:
+Set `data.main_path` in the model config. Ensure its `train_test_split/master_train.json` and `master_test.json` exist, then generate CAA data:
 
 ```bash
-bash scripts/build_data.sh --config model_config/default.json --contrastive
+bash scripts/build_data.sh --config model_config/llama3.2-1b.json --contrastive
 ```
 
-This reads `train_test_split/master_train.json` and `master_test.json`. It writes training records under `<main_path>/contrastive/generate/` and pairwise test data under `<main_path>/contrastive/test/`. Test data keeps records with hallucinated packages, removes invalid prompts and train/test prompt overlap, and defaults to original (unshuffled) records in `test_dataset_pairwise.json`.
+This reads `master_train.json` and `master_test.json`. It splits hallucination-bearing prompts from `master_train.json` into prompt-grouped CAA train/validation sets (90/10 by default) before augmentation. `generate_dataset.json` is used for vector extraction and `generate_dataset_val.json` for model selection; pairwise records from `master_test.json` remain under `<main_path>/contrastive/test/` for held-out evaluation.
 
-### Extract Vectors
+### Extract Vectors Only
 
 ```bash
-bash scripts/CAA.sh --config model_config/default.json --stage extract --layers 10 12 14
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --stage extract
 ```
 
-Vectors are written under `<main_path>/contrastive/vectors/` unless `--output-dir` is provided.
+Without `--layers`, extraction computes vectors for all model layers. Output defaults to `<main_path>/contrastive/vectors/`; use `--layers 10 12 14` to extract a subset.
 
-### Optional Pairwise Evaluation
+### Evaluate Existing Vectors
 
-The evaluator uses `<main_path>/contrastive/test/test_dataset_pairwise.json` by default. It compares the mean token log-likelihood of `answer_matching_behavior` and `answer_not_matching_behavior`; use `--dataset-path` to supply another JSON dataset with those fields:
+The evaluator uses `<main_path>/contrastive/generate/generate_dataset_val.json` by default, discovers all available vector layers, and sweeps multipliers `0, 0.5, 1, 1.5, 2`. Specify `--layers` or `--multipliers` to override these defaults:
 
 ```bash
-bash scripts/CAA.sh --config model_config/default.json --stage eval \
-  --dataset-path path/to/pairwise_evaluation.json \
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --stage eval \
   --layers 10 12 14 --multipliers 0 0.5 1
 ```
 
+To evaluate the held-out master test set instead, pass its generated pairwise file:
+
+```bash
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --stage eval \
+  --dataset-path data/Llama3_1B/contrastive/test/test_dataset_pairwise.json
+```
+
+After a sweep, the best setting (highest pairwise accuracy, then highest mean margin) is saved under `checkpoints/Llama-3.2-1B-Instruct_CAA/best_model_bundle/`. Override the result or bundle location with `--results-dir` or `--best-model-dir`. If using the test file for model selection, reserve a separate untouched set for final reporting.
+
+### Extract and Evaluate
+
+Run both stages in order; with no `--layers`, this extracts and evaluates all available layers:
+
+```bash
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --stage all
+```
+
+For a local Hugging Face model directory, pass `--model-path /path/to/model`. `CAA.sh` defaults to local-only loading; pass `--local-files-only false` only when the model should be fetched from Hugging Face.
+
+### Token or Sequence Mode
+
+`--mode token` (default) uses `generate_package_vectors.py` to learn from package-token activations. The default `--position-mode` is `mean`, averaging activations across tokens in each package; use `package_start` or `boundary` to select a single token instead.
+
+`--mode sequence` uses `generate_completion_vectors.py` to learn from response-level activations. Choose `--token-position last_token` or `mean_response`. The two modes write vectors and results to separate directories so their same-named layer vectors do not overwrite each other.
+
+```bash
+# Package-token activation at each package's first token
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --mode token --stage all
+
+# Mean activation across each response
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --mode sequence --token-position mean_response --stage all
+```
+
+### Use Original or Shuffled Data
+
+Choose a generated data variant with `--variant`; CAA selects the matching train file for extraction and validation file for evaluation:
+
+| Variant | Training input |
+| --- | --- |
+| Original only | `generate_dataset_original.json` |
+| Augmented | `generate_dataset_augmented.json` |
+| Shuffled (original + permutations) | `generate_dataset_shuffled.json` |
+| Shuffled only | `generate_dataset_shuffled_only.json` |
+
+The default variant is `original`, so the normal command needs no `--variant` flag. The `augmented` and `shuffled` variants currently contain the same records; use `shuffled_only` to exclude original-order examples. Examples:
+
+```bash
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --stage all
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --stage all --variant augmented
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --stage all --variant shuffled_only
+```
+
+The same option works with `--stage extract` or `--stage eval`. The default `original` and other non-augmented variants use separate vector folders (`vectors_<variant>`) and result folders under `checkpoints/<model>_CAA/<variant>`; `augmented` keeps the base `vectors/` and `<model>_CAA/` locations. For final held-out evaluation, run eval only and override its dataset:
+
+```bash
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --stage eval \
+  --variant original \
+  --dataset-path data/Llama3_1B/contrastive/test/test_dataset_pairwise.json
+```
+
+`--dataset-path` overrides the input for whichever stages are selected; when using `--stage all`, it is passed to both extraction and evaluation. Use `--variant` for the usual matching train/validation pair.
+
 ## Run the Pipeline
 
-The example below uses the matching Llama 3.2 1B config and dataset. Create the split once if `master_train.json` and `master_test.json` are missing:
+The example uses the Llama 3.2 1B config. `build_data.sh` reuses existing master splits, or creates them from the four source CSVs under `data.main_path` when both master files are missing.
 
 ```bash
 bash scripts/download_model.sh --model meta-llama/Llama-3.2-1B-Instruct   # Download the base model and run a sanity check
-python -m pkg_halluc.package_loader.train_test_hallu_split --data_dir data/Qwen_3B # Create the 90/10 train/test split
-bash scripts/build_data.sh --config model_config/default.json              # Build unlearning data from data.main_path
+bash scripts/build_data.sh --config model_config/llama3.2-1b.json --contrastive # Build unlearning and CAA data
 
-bash scripts/train_ga.sh        --model **meta-llama/Llama-3.2-1B-Instruct**
+bash scripts/train_ga.sh        --model meta-llama/Llama-3.2-1B-Instruct
 bash scripts/train_npo.sh       --model meta-llama/Llama-3.2-1B-Instruct
 bash scripts/train_ga_plain.sh  --model meta-llama/Llama-3.2-1B-Instruct
 bash scripts/train_npo_plain.sh --model meta-llama/Llama-3.2-1B-Instruct
@@ -197,6 +257,5 @@ Or run the full pipeline:
 
 ```bash
 bash scripts/quickstart.sh --config model_config/llama3.2-1b.json
-bash scripts/CAA.sh --config model_config/llama3.2-1b.json --stage all \
-  --layers 10 12 14 --multipliers 0 0.5 1
+bash scripts/CAA.sh --config model_config/llama3.2-1b.json --stage all
 ```

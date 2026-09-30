@@ -660,17 +660,29 @@ def extract_unlearning_records(
     for idx, row in df.iterrows():
         source_file = row.get("_source_file", f"row_{idx}")
 
+        ans_raw = row.get("Answers", "")
+        ans_str = str(ans_raw).strip() if pd.notna(ans_raw) else ""
+        if ans_str.lower() in ("nan", "none", "null"):
+            ans_str = ""
+
+        prompt_raw = row.get("Prompts", "")
+        if pd.isna(prompt_raw) or str(prompt_raw).strip().lower() in ("nan", "none", "null", ""):
+            prompt_raw = row.get("Questions", "")
+        prompt_str = str(prompt_raw).strip() if pd.notna(prompt_raw) else ""
+        if prompt_str.lower() in ("nan", "none", "null"):
+            prompt_str = ""
+
         mode_specs = [
             (
                 1,
-                str(row.get("Answers", "")).strip(),
+                ans_str,
                 parse_package_list(row.get("valid_1", row.get("valid1", []))),
                 parse_package_list(row.get("hallucinated_1", row.get("hallucination_1", []))),
                 parse_package_list(row.get("Test_1", [])),
             ),
             (
                 2,
-                str(row.get("Prompts", row.get("Questions", ""))).strip(),
+                prompt_str,
                 parse_package_list(row.get("valid_2", row.get("valid2", []))),
                 parse_package_list(row.get("hallucinated_2", row.get("hallucination_2", []))),
                 parse_package_list(row.get("Test_2", [])),
@@ -831,13 +843,21 @@ def split_records_by_prompt(
     def get_split_type(rec: Any) -> str:
         return rec.split_type if hasattr(rec, "split_type") else rec.get("split_type", "")
 
+    def get_prompt_key(rec: Any) -> str:
+        up = rec.user_prompt if hasattr(rec, "user_prompt") else rec.get("user_prompt", "")
+        return str(up).strip()
+
     if split_retain_only:
         forget_records = [r for r in records if get_split_type(r) == "forget"]
         retain_records = [r for r in records if get_split_type(r) != "forget"]
 
-        groups: Dict[str, List[UnlearningRecord]] = {}
-        for r in retain_records:
-            k = get_group_key(r)
+        forget_prompt_keys = {get_prompt_key(r) for r in forget_records if get_prompt_key(r)}
+        forced_train_retain = [r for r in retain_records if get_prompt_key(r) in forget_prompt_keys]
+        candidate_retain = [r for r in retain_records if get_prompt_key(r) not in forget_prompt_keys]
+
+        groups: Dict[str, List[Any]] = {}
+        for r in candidate_retain:
+            k = get_prompt_key(r)
             groups.setdefault(k, []).append(r)
 
         keys = sorted(groups.keys())
@@ -851,7 +871,7 @@ def split_records_by_prompt(
         retain_train = [r for k in train_keys for r in groups[k]]
         retain_val = [r for k in val_keys for r in groups[k]]
 
-        train_records = retain_train + forget_records
+        train_records = retain_train + forced_train_retain + forget_records
         val_records = retain_val
     else:
         groups: Dict[str, List[UnlearningRecord]] = {}

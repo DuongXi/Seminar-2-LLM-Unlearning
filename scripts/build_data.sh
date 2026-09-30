@@ -9,7 +9,7 @@ MODEL="Qwen/Qwen2.5-Coder-0.5B-Instruct"
 MODEL_PATH=""
 SEED="42"
 MAX_LENGTH="2048"
-VAL_RATIO="0.0"
+VAL_RATIO="0.1"
 MAX_SAMPLES_PER_SPLIT=""
 CONFIG_FILE=""
 MAIN_PATH=""
@@ -65,7 +65,7 @@ for ((_i = 0; _i < ${#_args[@]}; _i++)); do
 done
 
 if [ -n "$CONFIG_FILE" ]; then
-    load_config "$CONFIG_FILE" "" "data"
+    load_config "$CONFIG_FILE" "" "data" "methods.ga"
     [ -n "${CFG_MODEL_NAME:-}" ] && MODEL="$CFG_MODEL_NAME"
     [ -n "${CFG_SEED:-}" ] && SEED="$CFG_SEED"
     [ -n "${CFG_MAX_TRAIN_SAMPLES_PER_SPLIT:-}" ] && MAX_SAMPLES_PER_SPLIT="$CFG_MAX_TRAIN_SAMPLES_PER_SPLIT"
@@ -132,6 +132,39 @@ MAIN_PATH="${MAIN_PATH%/}"
 [ -n "$MAIN_PATH" ] || { echo "Error: set data.main_path in the config or pass --main-path." >&2; exit 1; }
 
 SPLIT_DIR="$MAIN_PATH/train_test_split"
+MASTER_TRAIN="$SPLIT_DIR/master_train.json"
+MASTER_TEST="$SPLIT_DIR/master_test.json"
+
+if [ ! -f "$MASTER_TRAIN" ] && [ ! -f "$MASTER_TEST" ]; then
+    SPLIT_SOURCE_FILES=(
+        "LLM_AT_results.csv"
+        "LLM_LY_results.csv"
+        "SO_AT_results.csv"
+        "SO_LY_results.csv"
+    )
+    MISSING_SPLIT_SOURCE=""
+    for source_file in "${SPLIT_SOURCE_FILES[@]}"; do
+        if [ ! -f "$MAIN_PATH/$source_file" ]; then
+            MISSING_SPLIT_SOURCE="$MAIN_PATH/$source_file"
+            break
+        fi
+    done
+
+    if [ -z "$MISSING_SPLIT_SOURCE" ]; then
+        echo "[build-data] Train/test master files not found; creating the split from source CSVs."
+        cd "$REPO_ROOT"
+        "$PYTHON_BIN" -m pkg_halluc.package_loader.train_test_hallu_split \
+            --data_dir "$MAIN_PATH" --seed "$SEED" --val_ratio "$VAL_RATIO"
+    elif [ "$CONTRASTIVE" != "0" ] && [ "$CONTRASTIVE" != "false" ]; then
+        echo "Error: Cannot build contrastive data. Missing master split files and source CSV: $MISSING_SPLIT_SOURCE" >&2
+        exit 1
+    fi
+elif [ "$CONTRASTIVE" != "0" ] && [ "$CONTRASTIVE" != "false" ] && \
+    { [ ! -f "$MASTER_TRAIN" ] || [ ! -f "$MASTER_TEST" ]; }; then
+    echo "Error: Contrastive data requires both $MASTER_TRAIN and $MASTER_TEST. Complete or repair the existing split first." >&2
+    exit 1
+fi
+
 if [ -d "$SPLIT_DIR" ]; then
     [ -z "$OUT_MASTER" ] && [ -f "$SPLIT_DIR/master_train.json" ] && OUT_MASTER="$SPLIT_DIR/master_train.json"
     [ -z "$OUT_VAL_MASTER" ] && [ -f "$SPLIT_DIR/master_val.json" ] && OUT_VAL_MASTER="$SPLIT_DIR/master_val.json"

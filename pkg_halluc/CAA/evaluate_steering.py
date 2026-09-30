@@ -22,9 +22,9 @@ for p in [SCRIPT_DIR, CAA_DIR, REPO_ROOT]:
     if p not in sys.path:
         sys.path.append(p)
 
-from steering_settings import SteeringSettings
-from utils import make_tensor_save_suffix
-from wrapper import ModelWrapper
+from pkg_halluc.CAA.steering_settings import SteeringSettings
+from pkg_halluc.CAA.utils import make_tensor_save_suffix
+from pkg_halluc.CAA.wrapper import ModelWrapper
 
 load_dotenv()
 HUGGINGFACE_TOKEN = os.getenv("HF_TOKEN")
@@ -74,6 +74,7 @@ def evaluate_pairwise_steering(
     dataset_path: Optional[str] = None,
     vectors_dir: Optional[str] = None,
     results_dir: Optional[str] = None,
+    best_model_dir: Optional[str] = None,
     max_samples: Optional[int] = None,
     overwrite: bool = False,
 ):
@@ -81,6 +82,11 @@ def evaluate_pairwise_steering(
         raise ValueError("Provide main_path or explicit vector and results directories.")
     save_results_dir = results_dir
     os.makedirs(save_results_dir, exist_ok=True)
+    if best_model_dir is None:
+        best_model_dir = os.path.join(
+            os.path.dirname(os.path.abspath(save_results_dir)),
+            "best_model_bundle",
+        )
 
     if not dataset_path or not os.path.isfile(dataset_path):
         raise FileNotFoundError(f"Pairwise evaluation dataset not found: {dataset_path}")
@@ -107,6 +113,21 @@ def evaluate_pairwise_steering(
 
     # Evaluate each layer and multiplier.
     summary_records = []
+    best_candidate = None
+
+    def consider_best(summary: Dict[str, Any], layer: int, vector: torch.Tensor):
+        nonlocal best_candidate
+        if not summary.get("num_samples") or "matching_accuracy" not in summary or "mean_margin" not in summary:
+            return
+
+        score = (float(summary["matching_accuracy"]), float(summary["mean_margin"]))
+        if best_candidate is None or score > best_candidate["score"]:
+            best_candidate = {
+                "score": score,
+                "summary": summary,
+                "layer": layer,
+                "vector": vector.detach().to(device="cpu").clone(),
+            }
 
     for layer in layers:
         model_name_path = model.model_name_path
@@ -135,6 +156,16 @@ def evaluate_pairwise_steering(
 
             if os.path.exists(save_filename) and not overwrite:
                 print(f"[!] Found existing {os.path.basename(save_filename)} - skipping")
+                with open(save_filename, "r", encoding="utf-8") as f:
+                    cached_summary = json.load(f).get("summary", {})
+                if (
+                    isinstance(cached_summary, dict)
+                    and cached_summary.get("num_samples") == len(evaluation_data)
+                ):
+                    summary_records.append(cached_summary)
+                    consider_best(cached_summary, layer, vector)
+                else:
+                    print("[!] Cached result sample count differs; excluding it from best selection.")
                 continue
 
             results = []
@@ -162,13 +193,13 @@ def evaluate_pairwise_steering(
             if results:
                 matching_count = sum(1 for r in results if r.get("is_matching", False))
                 accuracy = matching_count / len(results)
-                hallu_rate = 1.0 - accuracy
+                pairwise_failure_rate = 1.0 - accuracy
                 mean_margin = sum(r["score_margin"] for r in results) / len(results)
                 mean_match_score = sum(r["matching_score"] for r in results) / len(results)
 
                 summary.update({
                     "matching_accuracy": accuracy,
-                    "hallucination_rate": hallu_rate,
+                    "pairwise_failure_rate": pairwise_failure_rate,
                     "mean_matching_score": mean_match_score,
                     "mean_margin": mean_margin,
                 })
@@ -176,11 +207,12 @@ def evaluate_pairwise_steering(
                 print(
                     f"--> [Layer {layer}, Mult {multiplier:+.1f}] "
                     f"Pairwise accuracy: {accuracy * 100:.1f}% | "
-                    f"Hallucination Rate: {hallu_rate * 100:.1f}% | "
+                    f"Pairwise failure rate: {pairwise_failure_rate * 100:.1f}% | "
                     f"Margin: {mean_margin:+.4f}",
                     flush=True,
                 )
 
+            consider_best(summary, layer, vector)
             summary_records.append(summary)
 
             payload = {
@@ -195,6 +227,24 @@ def evaluate_pairwise_steering(
     summary_path = os.path.join(save_results_dir, f"sweep_summary_{settings.get_formatted_model_name()}.json")
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary_records, f, indent=4)
+    if best_candidate is not None:
+        model.reset_all()
+        model.save_steering_bundle(
+            best_model_dir,
+            layer=best_candidate["layer"],
+            vector=best_candidate["vector"],
+            multiplier=float(best_candidate["summary"]["multiplier"]),
+        )
+        print(
+            f"[+] Best bundle saved to {best_model_dir} "
+            f"(layer={best_candidate['layer']}, "
+            f"multiplier={best_candidate['summary']['multiplier']}, "
+            f"accuracy={best_candidate['score'][0]:.4f}, "
+            f"margin={best_candidate['score'][1]:+.4f})",
+            flush=True,
+        )
+    else:
+        print("[!] No completed pairwise scores; best-model bundle was not saved.", flush=True)
     print(f"\n[+] Steering evaluation completed. Results saved to {save_results_dir}", flush=True)
 
 if __name__ == "__main__":
@@ -214,6 +264,7 @@ if __name__ == "__main__":
     parser.add_argument("--main_path", type=str, default=None, help="Model data directory from config data.main_path")
     parser.add_argument("--vectors_dir", type=str, default=None, help="CAA vector directory")
     parser.add_argument("--results_dir", type=str, default=None, help="Evaluation results directory")
+    parser.add_argument("--best_model_dir", type=str, default=None, help="Directory for the best model and CAA vector bundle")
     parser.add_argument("--layers", nargs="+", type=int, required=True, help="Transformer layer indices to steer")
     parser.add_argument("--multipliers", nargs="+", type=float, required=True, help="Multipliers for steering vector")
     parser.add_argument("--dataset_path", type=str, default=None, help="Override the generated pairwise test dataset")
@@ -253,7 +304,7 @@ if __name__ == "__main__":
     if results_dir is None:
         results_dir = os.path.join(main_path, "contrastive", "results")
     dataset_path = args.dataset_path or os.path.join(
-        main_path, "contrastive", "test", "test_dataset_pairwise.json"
+        main_path, "contrastive", "generate", "generate_dataset_val.json"
     )
     steering_settings = SteeringSettings(
         model_name=model_name,
@@ -273,6 +324,7 @@ if __name__ == "__main__":
         dataset_path=dataset_path,
         vectors_dir=vectors_dir,
         results_dir=results_dir,
+        best_model_dir=args.best_model_dir,
         max_samples=args.max_samples,
         overwrite=args.overwrite,
     )

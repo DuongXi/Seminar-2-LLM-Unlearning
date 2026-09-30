@@ -223,23 +223,6 @@ class PackageUnlearningDataset(Dataset):
         ds.records = list(records)
         return ds
 
-    def split_train_val(
-        self,
-        val_ratio: float = 0.1,
-        seed: int = 42,
-        split_retain_only: bool = True,
-    ) -> Tuple["PackageUnlearningDataset", "PackageUnlearningDataset"]:
-        """Split dataset into train and validation sets grouped by prompt to prevent data leakage"""
-        train_records, val_records = split_records_by_prompt(
-            self.records,
-            val_ratio=val_ratio,
-            seed=seed,
-            split_retain_only=split_retain_only,
-        )
-        train_ds = self._clone_with_records(train_records)
-        val_ds = self._clone_with_records(val_records, split_type="val" if not split_retain_only else "retain")
-        return train_ds, val_ds
-
     def to_tri_mask_dataset(
         self,
         tokenizer: Optional[Union[str, Any]] = None,
@@ -400,7 +383,14 @@ def get_unlearning_dataloaders_with_val(
     )
 
     # Prompt-grouped split holding out retain only
-    train_ds, val_ds = ds.split_train_val(val_ratio=val_ratio, seed=seed, split_retain_only=True)
+    train_records, val_records = split_records_by_prompt(
+        ds.records,
+        val_ratio=val_ratio,
+        seed=seed,
+        split_retain_only=True,
+    )
+    train_ds = ds._clone_with_records(train_records)
+    val_ds = ds._clone_with_records(val_records, split_type="retain")
 
     forget_records = [r for r in train_ds.records if r.split_type == "forget"]
     retain_train_records = [r for r in train_ds.records if r.split_type == "retain"]

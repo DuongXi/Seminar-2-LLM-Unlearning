@@ -9,6 +9,7 @@ from pathlib import Path
 from pkg_halluc.common.model_setup import apply_hf_token
 from pkg_halluc.common.model_presets import resolve_model_name, resolve_model_suffix
 from .generate_tri_mask import generate_tri_mask_dataset
+from .train_test_hallu_split import split_train_val
 from .unlearn_loader import PackageUnlearningDataset
 from .utils import (
     infer_model,
@@ -151,11 +152,13 @@ def main():
                 max_length=args.max_length,
             )
     elif args.val_ratio > 0.0:
-        train_ds, val_ds = unlearn_ds.split_train_val(
+        train_records, val_records = split_train_val(
+            unlearn_ds.records,
             val_ratio=args.val_ratio,
             seed=args.seed,
-            split_retain_only=True,
         )
+        train_ds = unlearn_ds._clone_with_records(train_records)
+        val_ds = unlearn_ds._clone_with_records(val_records, split_type="retain")
         print(f"Split dataset with val_ratio={args.val_ratio}: train={len(train_ds)}, val={len(val_ds)}")
 
         # Save pre-tri-mask master datasets to disk

@@ -4,13 +4,16 @@ Universal Model Steering Wrapper for CAA
 
 import os
 import json
+from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 import torch as t
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
+from safetensors.torch import load_file, save_file
 from pkg_halluc.common.model_presets import resolve_model_name
-from utils import (
-    get_transformer_layers,
-)
+try:
+    from .utils import get_transformer_layers
+except ImportError:
+    from pkg_halluc.CAA.utils import get_transformer_layers
 
 
 class SteeringHook:
@@ -177,17 +180,85 @@ class ModelWrapper:
             hook.from_position = pos
 
     def set_add_activations(self, layer: int, activations: t.Tensor, multiplier: float = 1.0):
-        """Register or update a steering vector to be added at a given layer."""
+        """Register or update a steering vector to be added at a given layer"""
         if layer in self.hooks:
             self.hooks[layer].set_add(activations, multiplier=multiplier)
 
+    def save_steering_bundle(
+        self,
+        output_dir: str | os.PathLike[str],
+        layer: int,
+        vector: t.Tensor,
+        multiplier: float = 1.0,
+    ) -> None:
+        """Save the base model, tokenizer, and CAA vector as one loadable bundle"""
+        if layer not in self.hooks:
+            raise ValueError(f"Invalid steering layer {layer}; model has {self.num_layers} layers.")
+
+        bundle_dir = Path(output_dir)
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+        self.model.save_pretrained(bundle_dir, safe_serialization=True)
+        self.tokenizer.save_pretrained(bundle_dir)
+        save_file(
+            {"steering_vector": vector.detach().to(device="cpu").contiguous()},
+            str(bundle_dir / "steering.safetensors"),
+        )
+
+        bundle_config = {
+            "format_version": 1,
+            "layer": layer,
+            "multiplier": float(multiplier),
+            "vector_file": "steering.safetensors",
+            "vector_key": "steering_vector",
+        }
+        with (bundle_dir / "steering_config.json").open("w", encoding="utf-8") as handle:
+            json.dump(bundle_config, handle, indent=2)
+
+    @classmethod
+    def from_steering_bundle(
+        cls,
+        bundle_dir: str | os.PathLike[str],
+        hf_token: Optional[str] = None,
+        device: Optional[str] = None,
+        dtype: Optional[str] = None,
+        local_files_only: bool = True,
+    ) -> "ModelWrapper":
+        """Load a saved CAA bundle and activate its vector hook"""
+        bundle_path = Path(bundle_dir)
+        config_path = bundle_path / "steering_config.json"
+        if not config_path.is_file():
+            raise FileNotFoundError(f"Steering bundle config not found: {config_path}")
+
+        with config_path.open("r", encoding="utf-8") as handle:
+            bundle_config = json.load(handle)
+
+        vector_path = bundle_path / bundle_config["vector_file"]
+        if not vector_path.is_file():
+            raise FileNotFoundError(f"Steering vector not found: {vector_path}")
+
+        model = cls(
+            hf_token=hf_token,
+            model_name_or_path=str(bundle_path),
+            device=device,
+            dtype=dtype,
+            local_files_only=local_files_only,
+        )
+        layer = int(bundle_config["layer"])
+        if layer not in model.hooks:
+            raise ValueError(f"Bundle layer {layer} is invalid for this model ({model.num_layers} layers).")
+
+        tensors = load_file(str(vector_path), device="cpu")
+        vector = tensors[bundle_config["vector_key"]]
+        model.set_add_activations(layer, vector, multiplier=float(bundle_config["multiplier"]))
+        return model
+
     def reset_all(self):
-        """Reset all active steering vectors and internal buffers across all layers."""
+        """Reset all active steering vectors and internal buffers across all layers"""
         for hook in self.hooks.values():
             hook.reset()
 
     def get_last_activations(self, layer: int) -> Optional[t.Tensor]:
-        """Retrieve output activations from the most recent forward pass at layer."""
+        """Retrieve output activations from the most recent forward pass at layer"""
         if layer in self.hooks:
             return self.hooks[layer].last_activations
         return None
@@ -227,7 +298,7 @@ class ModelWrapper:
         return prompt_ids, prompt_len
 
     def generate(self, tokens: t.Tensor, max_new_tokens: int = 100) -> str:
-        """Autoregressive text generation with active steering hooks."""
+        """Autoregressive text generation with active steering hooks"""
         with t.no_grad():
             tokens = tokens.to(self.device)
             prompt_len = tokens.size(1)
@@ -253,7 +324,7 @@ class ModelWrapper:
         system_prompt: Optional[str] = None,
         max_new_tokens: int = 100,
     ) -> str:
-        """Format text prompt, execute steered generation, and return decoded text."""
+        """Format text prompt, execute steered generation, and return decoded text"""
         token_ids, prompt_len = self.format_prompt(
             user_input=user_input,
             system_prompt=system_prompt,
@@ -276,7 +347,7 @@ class ModelWrapper:
             return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
 
     def get_logits(self, tokens: t.Tensor) -> t.Tensor:
-        """Execute forward pass and return output logits."""
+        """Execute forward pass and return output logits"""
         with t.no_grad():
             tokens = tokens.to(self.device)
             return self.model(tokens).logits
@@ -287,7 +358,7 @@ class ModelWrapper:
         model_output: Optional[str] = None,
         system_prompt: Optional[str] = None,
     ) -> t.Tensor:
-        """Format text, configure steering boundary, and compute next-token logits."""
+        """Format text, configure steering boundary, and compute next-token logits"""
         token_ids, prompt_len = self.format_prompt(
             user_input=user_input,
             system_prompt=system_prompt,
@@ -322,7 +393,7 @@ class ModelWrapper:
         return token_log_probs.mean().item()
 
     def __del__(self):
-        """Cleanup forward hook handles upon deletion."""
+        """Cleanup forward hook handles upon deletion"""
         if hasattr(self, "hook_handles"):
             for h in self.hook_handles:
                 try:

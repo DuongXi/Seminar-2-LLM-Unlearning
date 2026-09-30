@@ -287,8 +287,8 @@ def main():
 def parse_arguments():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-path", required=True, help="Path to base model")
-    parser.add_argument("--retain-file", required=True, help="Tokenize JSONL retain (tri-mask)")
-    parser.add_argument("--forget-file", required=True, help="Tokenized JSONL forget (tri-mask)")
+    parser.add_argument("--retain_file", required=True, help="Tokenize JSONL retain (tri-mask)")
+    parser.add_argument("--forget_file", required=True, help="Tokenized JSONL forget (tri-mask)")
     parser.add_argument("--output-dir", required=True, help="Checkpoint dir")
     parser.add_argument("--cache-dir", default=None, help="Cache in huggingface_hub (optional)")
     parser.add_argument("--save_string", type=str, help="String appended to the run name (only used for naming on wandb)")

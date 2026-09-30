@@ -7,16 +7,35 @@ import json
 import random
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 from pkg_halluc.package_loader.unlearn_loader import PackageUnlearningDataset
-from pkg_halluc.package_loader.utils import parse_package_list
+from pkg_halluc.package_loader.utils import (
+    parse_package_list,
+    save_files,
+    split_records_by_prompt,
+)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+
+def split_train_val(
+    records: List[Any],
+    val_ratio: float = 0.1,
+    seed: int = 42,
+) -> Tuple[List[Any], List[Any]]:
+    """Hold out retained prompt groups for validation; keep forget records in train."""
+    return split_records_by_prompt(
+        records,
+        val_ratio=val_ratio,
+        seed=seed,
+        split_retain_only=True,
+    )
+
 
 def row_has_hallucination(row: pd.Series) -> bool:
     """Check if a CSV row contains any hallucinated package in any mode or pip"""
@@ -103,6 +122,12 @@ def main():
         type=float,
         default=0.9,
         help="Train split ratio (default: 0.9)",
+    )
+    parser.add_argument(
+        "--val_ratio",
+        type=float,
+        default=0.1,
+        help="Fraction of retained training prompts held out for validation (default: 0.1)",
     )
     parser.add_argument(
         "--seed",
@@ -192,6 +217,7 @@ def main():
                 "seed": args.seed,
                 "n_per_file": args.n_per_file,
                 "train_ratio": args.train_ratio,
+                "val_ratio": args.val_ratio,
                 "total_train": len(all_train_prompts),
                 "total_test": len(all_test_prompts),
                 "train_by_file": {k: len(v) for k, v in train_meta.items()},
@@ -210,8 +236,16 @@ def main():
         query_modes=[1, 2],
         auto_save=False,
     )
+    train_records, val_records = split_train_val(
+        train_dataset.records,
+        val_ratio=args.val_ratio,
+        seed=args.seed,
+    )
+    train_dataset.records = train_records
     master_train_file = out_dir / "master_train.json"
     train_dataset.save_to_file(master_train_file)
+    master_val_file = out_dir / "master_val.json"
+    save_files(val_records, master_val_file)
 
     # Build the normalized test master dataset.
     test_csv_strs = [str(p) for p in saved_test_csv_paths]
@@ -229,9 +263,11 @@ def main():
     train_retain = [r for r in train_dataset.records if r.split_type == "retain"]
     test_forget = [r for r in test_dataset.records if r.split_type == "forget"]
     test_retain = [r for r in test_dataset.records if r.split_type == "retain"]
+    val_retain = len(val_records)
     print(f"- Train records: {len(train_dataset.records)} ({len(train_forget)} forget, {len(train_retain)} retain)")
+    print(f"- Validation records: {val_retain} (retain only)")
     print(f"- Test records:  {len(test_dataset.records)} ({len(test_forget)} forget, {len(test_retain)} retain)")
-    print(f"Master files saved: {master_train_file} & {master_test_file}")
+    print(f"Master files saved: {master_train_file}, {master_val_file} & {master_test_file}")
 
 
 if __name__ == "__main__":

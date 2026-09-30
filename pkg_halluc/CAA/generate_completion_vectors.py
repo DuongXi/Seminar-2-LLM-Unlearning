@@ -28,7 +28,7 @@ for p in [PROJECT_ROOT, CAA_DIR, SCRIPT_DIR]:
 from pkg_halluc.common.model_presets import resolve_model_name
 
 def make_clean_model_suffix(model_id_or_preset: str) -> str:
-    """Generate a clean, unambiguous suffix for saved vector files."""
+    """Generate a clean, unambiguous suffix for saved vector files"""
     name = os.path.basename(model_id_or_preset.rstrip("/\\"))
     name = name.replace("models--", "").replace("--", "_")
     return name

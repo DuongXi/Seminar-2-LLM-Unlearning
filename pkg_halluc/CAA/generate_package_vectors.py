@@ -297,7 +297,7 @@ def main():
     parser.add_argument("--dataset_path", type=str, default=None, help="Path to generate_dataset.json file for package_hallucination")
     parser.add_argument("--output_dir", type=str, default=None, help="Output directory for steering vectors")
     parser.add_argument("--layers", nargs="+", type=int, default=None, help="List of layer indices to extract")
-    parser.add_argument("--position_mode", type=str, choices=["package_start", "boundary", "mean"], default="package_start", help="Activation extraction point: 'package_start', 'boundary', 'mean'")
+    parser.add_argument("--position_mode", type=str, choices=["package_start", "boundary", "mean"], default="mean", help="Activation extraction point: 'package_start', 'boundary', 'mean'")
     parser.add_argument("--layer_pairs", nargs="+", type=str, default=["adjacent"], help="Layer pairs for difference computation: 'adjacent', 'all', or specific pairs like '0-5' '5-10'")
     parser.add_argument("--save_layer_diffs", action="store_true", default=True, help="Save layer-pair difference steering vectors to layer_diffs/ directory")
     parser.add_argument("--max_samples", type=int, default=None, help="Limit number of samples for rapid testing")

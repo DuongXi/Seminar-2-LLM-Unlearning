@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from pkg_halluc.package_loader.utils import parse_package_list
+from pkg_halluc.package_loader.utils import parse_package_list, split_records_by_prompt
 
 
 def _normalize_record(r: Any) -> Dict[str, Any]:
@@ -213,6 +213,20 @@ def process_samples_with_augmentations(
     return original_records, combined_records, shuffled_only_records
 
 
+def split_train_val(
+    train_records: List[Dict[str, Any]],
+    val_ratio: float = 0.1,
+    seed: int = 42,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Split training records by source prompt before creating augmentations."""
+    return split_records_by_prompt(
+        train_records,
+        val_ratio=val_ratio,
+        seed=seed,
+        split_retain_only=False,
+    )
+
+
 def _load_records(source: Union[str, Path, List[Any]]) -> List[Dict[str, Any]]:
     """Load records from file (json array or jsonl) or list."""
     if isinstance(source, (str, Path)):
@@ -239,6 +253,7 @@ def generate_contrastive_dataset(
     num_shuffles_per_sample: int = 2,
     seed: int = 42,
     test_include_shuffles: bool = False,
+    val_ratio: float = 0.1,
 ) -> Dict[str, Any]:
     """
     Generate contrastive train and pairwise evaluation data for CAA steering.
@@ -281,14 +296,33 @@ def generate_contrastive_dataset(
     test_prompts = {prompt_text(record) for record in test_hallu} - {""}
     overlap = train_prompts.intersection(test_prompts)
 
-    gen_orig, gen_augmented, gen_shuffled_only = process_samples_with_augmentations(
-        base_samples=train_hallu,
+    train_hallu_train, train_hallu_val = split_train_val(
+        train_hallu,
+        val_ratio=val_ratio,
+        seed=seed,
+    )
+    print(
+        f"Train/validation split: {len(train_hallu_train)} train prompts, "
+        f"{len(train_hallu_val)} validation prompts (val_ratio={val_ratio})."
+    )
+
+    train_orig, train_augmented, train_shuffled_only = process_samples_with_augmentations(
+        base_samples=train_hallu_train,
+        num_shuffles_per_sample=num_shuffles_per_sample,
+        rng=rng,
+    )
+    val_orig, val_augmented, val_shuffled_only = process_samples_with_augmentations(
+        base_samples=train_hallu_val,
         num_shuffles_per_sample=num_shuffles_per_sample,
         rng=rng,
     )
     print(
-        f"Train set: {len(gen_orig)} original samples "
-        f"({len(gen_augmented)} augmented, {len(gen_shuffled_only)} shuffled only)."
+        f"Train set: {len(train_orig)} original samples "
+        f"({len(train_augmented)} augmented, {len(train_shuffled_only)} shuffled only)."
+    )
+    print(
+        f"Validation set: {len(val_orig)} original samples "
+        f"({len(val_augmented)} augmented, {len(val_shuffled_only)} shuffled only)."
     )
 
     test_orig, test_augmented, test_shuffled_only = process_samples_with_augmentations(
@@ -311,20 +345,22 @@ def generate_contrastive_dataset(
         gen_dir.mkdir(parents=True, exist_ok=True)
         test_dir.mkdir(parents=True, exist_ok=True)
 
-        path_gen_orig = gen_dir / "generate_dataset_original.json"
-        save_json(gen_orig, str(path_gen_orig))
+        for split_name, original, augmented, shuffled_only in (
+            ("train", train_orig, train_augmented, train_shuffled_only),
+            ("val", val_orig, val_augmented, val_shuffled_only),
+        ):
+            save_json(original, str(gen_dir / f"generate_dataset_{split_name}_original.json"))
+            save_json(augmented, str(gen_dir / f"generate_dataset_{split_name}_augmented.json"))
+            save_json(augmented, str(gen_dir / f"generate_dataset_{split_name}_shuffled.json"))
+            save_json(shuffled_only, str(gen_dir / f"generate_dataset_{split_name}_shuffled_only.json"))
 
-        path_gen_aug = gen_dir / "generate_dataset_augmented.json"
-        save_json(gen_augmented, str(path_gen_aug))
-
-        path_gen_main = gen_dir / "generate_dataset.json"
-        save_json(gen_augmented, str(path_gen_main))
-
-        path_gen_shuff = gen_dir / "generate_dataset_shuffled.json"
-        save_json(gen_augmented, str(path_gen_shuff))
-
-        path_gen_shuff_only = gen_dir / "generate_dataset_shuffled_only.json"
-        save_json(gen_shuffled_only, str(path_gen_shuff_only))
+        # Keep the original train filenames for the activation extractor.
+        save_json(train_orig, str(gen_dir / "generate_dataset_original.json"))
+        save_json(train_augmented, str(gen_dir / "generate_dataset_augmented.json"))
+        save_json(train_augmented, str(gen_dir / "generate_dataset_shuffled.json"))
+        save_json(train_augmented, str(gen_dir / "generate_dataset.json"))
+        save_json(train_shuffled_only, str(gen_dir / "generate_dataset_shuffled_only.json"))
+        save_json(val_augmented, str(gen_dir / "generate_dataset_val.json"))
 
         print(f"Saved train datasets to {gen_dir}")
 
@@ -344,9 +380,12 @@ def generate_contrastive_dataset(
         print(f"Saved test datasets to {test_dir}")
 
     return {
-        "train_original": gen_orig,
-        "train_augmented": gen_augmented,
-        "train_shuffled_only": gen_shuffled_only,
+        "train_original": train_orig,
+        "train_augmented": train_augmented,
+        "train_shuffled_only": train_shuffled_only,
+        "val_original": val_orig,
+        "val_augmented": val_augmented,
+        "val_shuffled_only": val_shuffled_only,
         "test_original": test_orig,
         "test_augmented": test_augmented,
         "test_shuffled_only": test_shuffled_only,
@@ -359,6 +398,7 @@ def main():
     parser.add_argument("--test_input", required=True, help="Path to the unlearning test master dataset")
     parser.add_argument("--output_dir", required=True, help="Target contrastive data directory")
     parser.add_argument("--num_shuffles", type=int, default=2, help="Number of shuffles per sample")
+    parser.add_argument("--val_ratio", type=float, default=0.1, help="Fraction of train prompts held out for validation")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--test_include_shuffles", action="store_true", help="Include shuffled pairs in the pairwise test dataset")
     args = parser.parse_args()
@@ -368,6 +408,7 @@ def main():
         test_input=args.test_input,
         output_base_dirs=[args.output_dir],
         num_shuffles_per_sample=args.num_shuffles,
+        val_ratio=args.val_ratio,
         seed=args.seed,
         test_include_shuffles=args.test_include_shuffles,
     )
