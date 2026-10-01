@@ -1,0 +1,33 @@
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights: 100% 146/146 [00:00<00:00, 204.37it/s]
+[backend] caa(layer=10 mult=2.0)
+100% 504/504 [03:36<00:00,  2.33batch/s]
+Forget dataset PPL: 216.0
+Forget dataset Acc: 16.8760929107666
+scanning:   0% 0/504 [00:00<?, ?it/s]/content/classical.py:110: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  k: torch.tensor(v).unsqueeze(0).to(model.device)
+scanning: 100% 504/504 [03:50<00:00,  2.19it/s]
+/content/data/Llama3_1B/tri_mask/npo_forget_tok_llama_1B.jsonl forget  NLL=3.2693  PPL=26.2926  ACC=47.8384%
+
+GITHUB
+
+ARXIV
+
+HALLU_PKG
+2026-09-30 07:35:17,780 - INFO - Loading CAA backend from /content/models/
+[caa_loader] imported ModelWrapper from pkg_halluc.CAA.wrapper
+[caa_loader] loading CAA bundle from /content/models/
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights: 100% 146/146 [00:06<00:00, 21.85it/s]
+[caa_loader] backend ready: caa(layer 10: mult=2.0)
+2026-09-30 07:35:26,853 - INFO - Generating completions
+2026-09-30 07:35:26,879 - INFO - Backend: caa(layer 10: mult=2.0)
+Generating:   0% 0/40 [00:00<?, ?sample/s][transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+Generating: 100% 40/40 [04:45<00:00,  7.15s/sample]
+2026-09-30 07:40:12,762 - INFO - Merging + scoring
+2026-09-30 07:40:12,789 - INFO - Loading PyPI whitelist
+2026-09-30 07:40:15,702 - INFO - Done. Results in /content/models/package_hallucination_results
+2026-09-30 07:40:15,707 - INFO - Totals:
+        valid_1  hallucinated_1  valid_2  hallucinated_2
+run          60               9       53              14
+Totals       60               9       53              14

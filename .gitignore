@@ -1,3 +1,13 @@
+# Eval ignores
+models/*
+temp/*
+logs/hallu
+logs/hallu_pkg
+logs/benchmarks
+legacy/*
+steer/*
+
+# Data & train ignore
 .workdir/
 outputs/
 eval_runs/

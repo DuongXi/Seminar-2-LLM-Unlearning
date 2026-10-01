@@ -1,4 +1,3 @@
-
 # pkg-halluc: Mitigating Package Hallucinations
 
 | Method | Description | Source |
