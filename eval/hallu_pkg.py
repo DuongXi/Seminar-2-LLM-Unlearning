@@ -13,8 +13,7 @@ For each row:
   1. Builds a chat prompt from (system_prompt, user_prompt).
   2. Generates a fresh completion with the model.
   3. Extracts package names from the completion.
-  4. Splits them into valid_packages / hallucinated_packages against a
-     PyPI whitelist.
+  4. Splits them into valid_packages / hallucinated_packages against a PyPI whitelist.
 
 Writes per-sample results and a FINAL_RESULTS.csv summary.
 """

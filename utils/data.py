@@ -163,3 +163,73 @@ def _sanitize_df(df: pd.DataFrame) -> pd.DataFrame:
             if isinstance(x, str) else x
         )
     return df
+
+
+# Code generation
+# Instruction wrappers for common model families when no chat template exists.
+# Maps a substring of the model name/path (lowercased) to a (prefix, suffix) pair
+# that wraps the raw problem prompt.
+_FALLBACK_TEMPLATES: list[tuple[str, tuple[str, str]]] = [
+    ("deepseek", ("{prompt}\n\n", "")),
+    ("codellama", ("[INST] {prompt} [/INST]\n", "")),
+    ("mistral", ("[INST] {prompt} [/INST]\n", "")),
+    ("llama", ("[INST] {prompt} [/INST]\n", "")),
+    (
+        "starchat",
+        ("<|system|>\n<|end|>\n<|user|>\n{prompt}<|end|>\n<|assistant|>\n", ""),
+    ),
+    (
+        "wizardcoder",
+        (
+            "Below is an instruction that describes a task.\n\n"
+            "### Instruction:\n{prompt}\n\n### Response:\n",
+            "",
+        ),
+    ),
+]
+
+
+def _has_chat_template(tokenizer) -> bool:
+    tmpl = getattr(tokenizer, "chat_template", None)
+    return bool(tmpl)
+
+
+def _build_prompt(raw_prompt: str, tokenizer, model_name: str) -> str:
+    instruction = (
+        "Complete the following Python function. "
+        "Return ONLY the completed function body with no extra commentary.\n\n"
+        + raw_prompt
+    )
+
+    if _has_chat_template(tokenizer):
+        try:
+            return tokenizer.apply_chat_template(
+                [{"role": "user", "content": instruction}],
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except Exception:
+            pass
+
+    name_lower = model_name.lower()
+    for key, (prefix_tmpl, suffix) in _FALLBACK_TEMPLATES:
+        if key in name_lower:
+            return prefix_tmpl.format(prompt=instruction) + suffix
+
+    return raw_prompt
+
+
+def _extract_solution(raw_prompt: str, completion: str) -> str:
+    code = completion
+    fence_start = re.search(r"```(?:python)?\n?", code)
+    if fence_start:
+        code = code[fence_start.end():]
+    code = code.split("```")[0]
+
+    if (
+        raw_prompt.strip().splitlines()[0].strip().startswith("def ")
+        and raw_prompt.strip().splitlines()[0].strip() in code
+    ):
+        return code
+
+    return raw_prompt + code

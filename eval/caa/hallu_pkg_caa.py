@@ -1,21 +1,5 @@
 #!/usr/bin/env python3
 """
-Package hallucination evaluation — schema-driven, dual-backend version.
-
-Reads a JSONL where each row carries its own prompting fields:
-
-    {"mode": 1 | 2,
-     "system_prompt": "...",
-     "user_prompt":   "...",
-     "completion":    "<optional, will be overwritten>"}
-
-For each row:
-  1. Builds a chat prompt from (system_prompt, user_prompt).
-  2. Generates a fresh completion with the selected backend.
-  3. Extracts package names from the completion.
-  4. Splits them into valid_packages / hallucinated_packages against a
-     PyPI whitelist.
-
 Backend selection:
     --caa_bundle PATH  → CAA-steered model (load_backend from caa_loader)
     --model_path PATH  → vanilla HF model (load_model from utils.model)

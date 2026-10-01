@@ -139,7 +139,7 @@ def dataset_metrics(model:AutoModelForCausalLM,
 
     mean_nll = total_nll / total_tokens
     ppl  = math.exp(mean_nll)
-    acc  = 100.0 * total_correct / total_tokens            # %
+    acc  = 100.0 * total_correct / total_tokens 
 
     return mean_nll, ppl, acc
 
