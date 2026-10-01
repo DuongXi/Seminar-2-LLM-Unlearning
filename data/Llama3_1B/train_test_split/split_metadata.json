@@ -1,0 +1,20 @@
+{
+  "seed": 42,
+  "n_per_file": 100,
+  "train_ratio": 0.9,
+  "val_ratio": 0.1,
+  "total_train": 360,
+  "total_test": 40,
+  "train_by_file": {
+    "LLM_AT_results.csv": 90,
+    "LLM_LY_results.csv": 90,
+    "SO_AT_results.csv": 90,
+    "SO_LY_results.csv": 90
+  },
+  "test_by_file": {
+    "LLM_AT_results.csv": 10,
+    "LLM_LY_results.csv": 10,
+    "SO_AT_results.csv": 10,
+    "SO_LY_results.csv": 10
+  }
+}

@@ -1,0 +1,249 @@
+from __future__ import annotations
+
+from typing import Any, Sequence
+
+import torch
+import torch.nn.functional as F
+from transformers import Trainer
+
+
+def zero_like(logits: torch.Tensor) -> torch.Tensor:
+    return (logits[0, 0, 0] * 0.0).squeeze()
+
+
+def row_masks(split_type: Sequence[str], device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+    retain_row = torch.tensor([s == "retain" for s in split_type], device=device).unsqueeze(1)
+    forget_row = torch.tensor([s == "forget" for s in split_type], device=device).unsqueeze(1)
+    return retain_row, forget_row
+
+
+def check_labels_in_vocab(labels: torch.Tensor, vocab_size: int | None) -> None:
+    if vocab_size is None:
+        return
+    bad = (labels != -100) & ((labels < 0) | (labels >= vocab_size))
+    if bad.any():
+        offending = labels[bad][0].item()
+        raise RuntimeError(
+            f"Label id {offending} out of vocab_size={vocab_size} range. "
+            "dataset is tokenized using a tokenizer different from "
+            "the tokenizer of the current model."
+        )
+
+
+class GAPlainTrainer(Trainer):
+    def __init__(
+        self,
+        *args: Any,
+        lambda_retain: float = 1.0,
+        lambda_forget: float = 0.5,
+        vocab_size: int | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.lambda_retain = lambda_retain
+        self.lambda_forget = lambda_forget
+        self.vocab_size = vocab_size
+        self._running_retain: list[float] = []
+        self._running_forget: list[float] = []
+        self._running_total: list[float] = []
+
+    def compute_loss(self, model, inputs, return_outputs: bool = False, **kwargs: Any):
+        model_inputs = {
+            "input_ids": inputs["input_ids"],
+            "attention_mask": inputs["attention_mask"],
+            "labels": inputs["labels"],
+        }
+        outputs = model(**model_inputs)
+        logits = outputs.logits
+
+        labels = inputs["labels"]
+        attn = inputs["attention_mask"]
+        split_type = inputs["split_type"]
+
+        logits = logits[:, :-1, :]
+        labels = labels[:, 1:]
+        attn = attn[:, 1:]
+
+        check_labels_in_vocab(labels, self.vocab_size)
+
+        V = logits.size(-1)
+        ce_per_tok = F.cross_entropy(
+            logits.reshape(-1, V),
+            labels.reshape(-1),
+            reduction="none",
+            ignore_index=-100,
+        ).view_as(labels)
+
+        valid = (labels != -100) & (attn == 1)
+        retain_row, forget_row = row_masks(split_type, labels.device)
+        retain_mask = valid & retain_row
+        forget_mask = valid & forget_row
+
+        L_retain = ce_per_tok[retain_mask].mean() if retain_mask.any() else zero_like(logits)
+        L_forget = -ce_per_tok[forget_mask].mean() if forget_mask.any() else zero_like(logits)
+
+        loss = self.lambda_retain * L_retain + self.lambda_forget * L_forget
+
+        if model.training:
+            if retain_mask.any():
+                self._running_retain.append(float(L_retain.detach().cpu()))
+            if forget_mask.any():
+                self._running_forget.append(float(L_forget.detach().cpu()))
+            self._running_total.append(float(loss.detach().cpu()))
+
+        step = int(self.state.global_step)
+        if (
+            model.training
+            and step > 0
+            and (step % max(1, self.args.logging_steps) == 0)
+            and getattr(self, "_last_logged_step", -1) != step
+        ):
+            self._last_logged_step = step
+            ret = float(L_retain.detach().cpu())
+            forg = float(L_forget.detach().cpu())
+            tot = float(loss.detach().cpu())
+            ret = sum(self._running_retain) / len(self._running_retain) if self._running_retain else 0.0
+            forg = sum(self._running_forget) / len(self._running_forget) if self._running_forget else 0.0
+            tot = sum(self._running_total) / len(self._running_total) if self._running_total else float(loss.detach().cpu())
+            self._running_retain.clear()
+            self._running_forget.clear()
+            self._running_total.clear()
+            self.log(
+                {
+                    "loss_retain": round(ret if abs(ret) > 1e-6 else 0.0, 4),
+                    "loss_forget": round(forg if abs(forg) > 1e-6 else 0.0, 4),
+                    "loss_total": round(tot, 4),
+                }
+            )
+        return (loss, outputs) if return_outputs else loss
+
+
+
+class NPOPlainTrainer(Trainer):
+    def __init__(
+        self,
+        *args: Any,
+        beta: float = 0.1,
+        lambda_retain: float = 1.0,
+        lambda_forget: float = 0.5,
+        temperature: float = 2.0,
+        alpha: float = 0.7,
+        gamma: float = 0.3,
+        vocab_size: int | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.beta = beta
+        self.lambda_retain = lambda_retain
+        self.lambda_forget = lambda_forget
+        self.temperature = temperature
+        self.alpha = alpha
+        self.gamma = gamma
+        self.vocab_size = vocab_size
+        self._running_retain: list[float] = []
+        self._running_forget: list[float] = []
+        self._running_conf: list[float] = []
+        self._running_div: list[float] = []
+        self._running_total: list[float] = []
+
+    def compute_loss(self, model, inputs, return_outputs: bool = False, **kwargs: Any):
+        model_inputs = {
+            "input_ids": inputs["input_ids"],
+            "attention_mask": inputs["attention_mask"],
+            "labels": inputs["labels"],
+        }
+        outputs = model(**model_inputs)
+        logits = outputs.logits
+
+        labels = inputs["labels"]
+        attn = inputs["attention_mask"]
+        split_type = inputs["split_type"]
+
+        logits = logits[:, :-1, :]
+        labels = labels[:, 1:]
+        attn = attn[:, 1:]
+
+        check_labels_in_vocab(labels, self.vocab_size)
+
+        V = logits.size(-1)
+        ce_per_tok = F.cross_entropy(
+            logits.reshape(-1, V),
+            labels.reshape(-1),
+            reduction="none",
+            ignore_index=-100,
+        ).view_as(labels)
+
+        valid = (labels != -100) & (attn == 1)
+        retain_row, forget_row = row_masks(split_type, labels.device)
+        retain_mask = valid & retain_row
+        forget_mask = valid & forget_row
+
+        L_retain = ce_per_tok[retain_mask].mean() if retain_mask.any() else zero_like(logits)
+
+        if forget_mask.any():
+            forget_logits = logits[forget_mask]
+            forget_labels = labels[forget_mask]
+
+            log_probs = F.log_softmax(forget_logits, dim=-1)
+            model_log_probs = torch.gather(
+                log_probs, dim=-1, index=forget_labels.unsqueeze(-1)
+            ).squeeze(-1)
+
+            core_term = F.softplus(self.beta * model_log_probs)
+
+            ref_logits = forget_logits / self.temperature
+            ref_probs = F.softmax(ref_logits, dim=-1)
+            kl_div = F.kl_div(log_probs, ref_probs, reduction="none").sum(dim=-1)
+
+            L_forget = self.alpha * core_term.mean() + self.gamma * kl_div.mean()
+            forget_confidence = torch.exp(model_log_probs).mean()
+            forget_diversity = kl_div.mean()
+        else:
+            L_forget = zero_like(logits)
+            forget_confidence = zero_like(logits)
+            forget_diversity = zero_like(logits)
+
+        loss = self.lambda_retain * L_retain + self.lambda_forget * L_forget
+
+        if model.training:
+            if retain_mask.any():
+                self._running_retain.append(float(L_retain.detach().cpu()))
+            if forget_mask.any():
+                self._running_forget.append(float(L_forget.detach().cpu()))
+                self._running_conf.append(float(forget_confidence.detach().cpu()))
+                self._running_div.append(float(forget_diversity.detach().cpu()))
+            self._running_total.append(float(loss.detach().cpu()))
+
+        step = int(self.state.global_step)
+        if (
+            model.training
+            and step > 0
+            and (step % max(1, self.args.logging_steps) == 0)
+            and getattr(self, "_last_logged_step", -1) != step
+        ):
+            self._last_logged_step = step
+            ret = float(L_retain.detach().cpu())
+            forg = float(L_forget.detach().cpu())
+            conf = float(forget_confidence.detach().cpu())
+            div = float(forget_diversity.detach().cpu())
+            tot = float(loss.detach().cpu())
+            ret = sum(self._running_retain) / len(self._running_retain) if self._running_retain else 0.0
+            forg = sum(self._running_forget) / len(self._running_forget) if self._running_forget else 0.0
+            conf = sum(self._running_conf) / len(self._running_conf) if self._running_conf else 0.0
+            div = sum(self._running_div) / len(self._running_div) if self._running_div else 0.0
+            tot = sum(self._running_total) / len(self._running_total) if self._running_total else float(loss.detach().cpu())
+            self._running_retain.clear()
+            self._running_forget.clear()
+            self._running_conf.clear()
+            self._running_div.clear()
+            self._running_total.clear()
+            self.log(
+                {
+                    "loss_retain": round(ret if abs(ret) > 1e-6 else 0.0, 4),
+                    "loss_forget": round(forg if abs(forg) > 1e-6 else 0.0, 4),
+                    "forget_confidence": round(conf, 4),
+                    "forget_diversity": round(div, 4),
+                    "loss_total": round(tot, 4),
+                }
+            )
+        return (loss, outputs) if return_outputs else loss

@@ -1,3 +1,4 @@
+# Eval ignores
 models/*
 temp/*
 logs/hallu
@@ -5,3 +6,48 @@ logs/hallu_pkg
 logs/benchmarks
 legacy/*
 steer/*
+
+# Data & train ignore
+.workdir/
+outputs/
+eval_runs/
+models/
+checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# editor
+.vscode/
+.idea/
+.DS_Store
+
+# local
+*.local.json
+.env
+hf_token.txt
+
+activations
+venv
+__pycache__
+.pytest_cache
+.ipynb_checkpoints
+.env
+notebooks/scratch.ipynb
+.vscode
+finetuned_models
+sync_model.sh
+logs
+.DS_Store
+.hypothesis
+*/.DS_Store

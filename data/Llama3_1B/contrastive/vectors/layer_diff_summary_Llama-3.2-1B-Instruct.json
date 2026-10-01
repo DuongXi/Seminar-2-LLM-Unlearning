@@ -1,0 +1,11 @@
+{
+  "0->1": {
+    "pair": "layer_0_to_1",
+    "layer_from": 0,
+    "layer_to": 1,
+    "delta_norm": 18.694772720336914,
+    "cosine_similarity_between_layers": 0.715289831161499,
+    "cosine_similarity_hall_vs_val_delta": 0.6316254138946533,
+    "save_path": "data/Llama3_1B/contrastive\\vectors\\layer_diffs\\vec_diff_layer_0_to_1_Llama-3.2-1B-Instruct.pt"
+  }
+}
