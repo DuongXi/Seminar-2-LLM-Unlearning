@@ -1,0 +1,273 @@
+"""
+Generate training data using package_loader
+"""
+from __future__ import annotations
+import argparse
+import json
+from pathlib import Path
+
+from pkg_halluc.common.model_setup import apply_hf_token
+from pkg_halluc.common.model_presets import resolve_model_name, resolve_model_suffix
+from .generate_tri_mask import generate_tri_mask_dataset
+from .train_test_hallu_split import split_train_val
+from .unlearn_loader import PackageUnlearningDataset
+from .utils import (
+    infer_model,
+    load_csv_data,
+    is_preprocessed,
+    save_tokenized_records,
+    setup_tokenizer,
+)
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--model_path", required=True, help="HF model name or path")
+    ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--max_length", type=int, default=2048)
+    ap.add_argument("--main_path", required=True, help="Path to the model data directory")
+    ap.add_argument("--result_files", nargs="*", default=[])
+    ap.add_argument("--out_master", default="")
+    ap.add_argument("--out_val_master", default="", help="Path to save held-out validation master records (pre-tri-mask)")
+    ap.add_argument("--out_retain_tri_mask", default="")
+    ap.add_argument("--out_forget_tri_mask", default="")
+    ap.add_argument("--val_ratio", type=float, default=0.0, help="Fraction of retain prompts to hold out for validation")
+    ap.add_argument("--out_val_retain_tri_mask", default="", help="Path to output validation retain tri-mask records")
+    ap.add_argument("--out_plain_train", default="", help="Path to save pre-tri-mask tokenized train records")
+    ap.add_argument("--out_plain_val", default="", help="Path to save pre-tri-mask tokenized val records")
+    ap.add_argument("--out_plain_test", default="", help="Path to save pre-tri-mask tokenized test records")
+    ap.add_argument("--out_plain_retain", default="", help="Path to save pre-tri-mask tokenized retain records")
+    ap.add_argument("--out_plain_forget", default="", help="Path to save pre-tri-mask tokenized forget records")
+    ap.add_argument("--max_train_samples_per_split", type=int, default=None, help="Cap samples per split for smoke test")
+    ap.add_argument(
+        "--contrastive",
+        nargs="?",
+        const="true",
+        choices=("true", "false"),
+        default="false",
+        type=str.lower,
+        help="Build contrastive data for CAA",
+    )
+    ap.add_argument("--contrastive_num_shuffles", type=int, default=2, help="Number of shuffled permutations per sample for contrastive dataset (default: 2)")
+    args = ap.parse_args()
+
+    suffix = resolve_model_suffix(args.model_path)
+    main_dir = Path(args.main_path)
+    split_dir = main_dir / "train_test_split"
+    train_csv_dir = split_dir / "train_csvs"
+
+    if not args.result_files:
+        if train_csv_dir.is_dir() and any(train_csv_dir.glob("*_train.csv")):
+            args.result_files = [str(p) for p in sorted(train_csv_dir.glob("*_train.csv"))]
+    if not args.out_retain_tri_mask:
+        args.out_retain_tri_mask = str(main_dir / "tri_mask" / f"npo_retain_tok{suffix}.jsonl")
+    if not args.out_forget_tri_mask:
+        args.out_forget_tri_mask = str(main_dir / "tri_mask" / f"npo_forget_tok{suffix}.jsonl")
+    if not args.out_val_retain_tri_mask and (args.val_ratio > 0.0 or (split_dir / "master_val.json").is_file()):
+        args.out_val_retain_tri_mask = str(main_dir / "tri_mask" / f"npo_val_retain_tok{suffix}.jsonl")
+    if not args.out_master:
+        args.out_master = str(split_dir / "master_train.json")
+    if not args.out_val_master:
+        if (split_dir / "master_val.json").is_file():
+            args.out_val_master = str(split_dir / "master_val.json")
+        elif args.val_ratio > 0.0:
+            args.out_val_master = str(split_dir / "master_val.json")
+
+    if not args.out_plain_train:
+        args.out_plain_train = str(main_dir / "plain" / f"plain_train_tok{suffix}.jsonl")
+    if not args.out_plain_val and (args.val_ratio > 0.0 or (split_dir / "master_val.json").is_file()):
+        args.out_plain_val = str(main_dir / "plain" / f"plain_val_tok{suffix}.jsonl")
+    if not args.out_plain_retain:
+        args.out_plain_retain = str(main_dir / "plain" / f"plain_retain_tok{suffix}.jsonl")
+    if not args.out_plain_forget:
+        args.out_plain_forget = str(main_dir / "plain" / f"plain_forget_tok{suffix}.jsonl")
+
+    apply_hf_token()
+    tok = setup_tokenizer(
+        resolve_model_name(args.model_path),
+        model_family=infer_model(args.model_path),
+    )
+    out_master_path = Path(args.out_master) if args.out_master else None
+    out_val_master_path = Path(args.out_val_master) if args.out_val_master else None
+
+    # Check if both master train and val already exist
+    reusing_master = False
+    if out_master_path and out_master_path.is_file() and is_preprocessed(out_master_path):
+        if out_val_master_path and out_val_master_path.is_file() and is_preprocessed(out_val_master_path):
+            print(f"Found existing master train ({out_master_path}) and master val ({out_val_master_path}). Reusing both!")
+            train_ds = PackageUnlearningDataset(
+                data_source=str(out_master_path),
+                split_type="all",
+                query_modes=[1, 2],
+                tokenizer=tok,
+                model_family=infer_model(args.model_path),
+                max_length=args.max_length,
+            )
+            val_ds = PackageUnlearningDataset(
+                data_source=str(out_val_master_path),
+                split_type="retain",
+                query_modes=[1, 2],
+                tokenizer=tok,
+                model_family=infer_model(args.model_path),
+                max_length=args.max_length,
+            )
+            reusing_master = True
+        else:
+            print(f"Found existing dataset pool at {out_master_path}. Loading it for splitting/processing.")
+            unlearn_ds = PackageUnlearningDataset(
+                data_source=str(out_master_path),
+                split_type="all",
+                query_modes=[1, 2],
+                tokenizer=tok,
+                model_family=infer_model(args.model_path),
+                max_length=args.max_length,
+            )
+    else:
+        # Load from result_files
+        if not args.result_files:
+            raise ValueError("No master dataset or result_files provided to build_data!")
+        source_df = load_csv_data(args.result_files)
+        unlearn_ds = PackageUnlearningDataset(
+            data_source=source_df,
+            split_type="all",
+            query_modes=[1, 2],
+            tokenizer=tok,
+            model_family=infer_model(args.model_path),
+            max_length=args.max_length,
+        )
+
+    val_retain_tri_mask_records = []
+    if reusing_master:
+        print(f"Loaded {len(train_ds)} train records and {len(val_ds)} val records.")
+        retain_tri_mask_records, forget_tri_mask_records = generate_tri_mask_dataset(
+            dataset=train_ds,
+            tokenizer=tok,
+            suffix=suffix,
+            max_length=args.max_length,
+        )
+        if args.out_val_retain_tri_mask and len(val_ds) > 0:
+            val_retain_tri_mask_records, _ = generate_tri_mask_dataset(
+                dataset=val_ds,
+                tokenizer=tok,
+                suffix=suffix,
+                max_length=args.max_length,
+            )
+    elif args.val_ratio > 0.0:
+        train_records, val_records = split_train_val(
+            unlearn_ds.records,
+            val_ratio=args.val_ratio,
+            seed=args.seed,
+        )
+        train_ds = unlearn_ds._clone_with_records(train_records)
+        val_ds = unlearn_ds._clone_with_records(val_records, split_type="retain")
+        print(f"Split dataset with val_ratio={args.val_ratio}: train={len(train_ds)}, val={len(val_ds)}")
+
+        # Save pre-tri-mask master datasets to disk
+        if out_master_path:
+            out_master_path.parent.mkdir(parents=True, exist_ok=True)
+            train_ds.save_to_file(out_master_path)
+            print(f"Saved master train records ({len(train_ds)}) to {out_master_path}")
+        if out_val_master_path and len(val_ds) > 0:
+            out_val_master_path.parent.mkdir(parents=True, exist_ok=True)
+            val_ds.save_to_file(out_val_master_path)
+            print(f"Saved master val records ({len(val_ds)}) to {out_val_master_path}")
+
+        retain_tri_mask_records, forget_tri_mask_records = generate_tri_mask_dataset(
+            dataset=train_ds,
+            tokenizer=tok,
+            suffix=suffix,
+            max_length=args.max_length,
+        )
+        if args.out_val_retain_tri_mask and len(val_ds) > 0:
+            val_retain_tri_mask_records, _ = generate_tri_mask_dataset(
+                dataset=val_ds,
+                tokenizer=tok,
+                suffix=suffix,
+                max_length=args.max_length,
+            )
+    else:
+        print(f"Loaded {len(unlearn_ds)} records from dataset (val_ratio=0).")
+        if out_master_path and not reusing_master:
+            out_master_path.parent.mkdir(parents=True, exist_ok=True)
+            unlearn_ds.save_to_file(out_master_path)
+        retain_tri_mask_records, forget_tri_mask_records = generate_tri_mask_dataset(
+            dataset=unlearn_ds,
+            tokenizer=tok,
+            suffix=suffix,
+            max_length=args.max_length,
+        )
+
+    if args.max_train_samples_per_split is not None:
+        retain_tri_mask_records = retain_tri_mask_records[: args.max_train_samples_per_split]
+        forget_tri_mask_records = forget_tri_mask_records[: args.max_train_samples_per_split]
+        if val_retain_tri_mask_records:
+            val_retain_tri_mask_records = val_retain_tri_mask_records[: args.max_train_samples_per_split]
+
+    # Save retain, forget, and optional val tri-mask datasets
+    save_specs = [
+        (args.out_retain_tri_mask, retain_tri_mask_records),
+        (args.out_forget_tri_mask, forget_tri_mask_records),
+    ]
+    if args.out_val_retain_tri_mask and val_retain_tri_mask_records:
+        save_specs.append((args.out_val_retain_tri_mask, val_retain_tri_mask_records))
+
+    for output_path, records in save_specs:
+        if not output_path:
+            continue
+        output = Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("w", encoding="utf-8") as handle:
+            for record in records:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    val_info = f" | {len(val_retain_tri_mask_records)} val_retain" if val_retain_tri_mask_records else ""
+    print(f"Tri-mask records saved: {len(retain_tri_mask_records)} retain | {len(forget_tri_mask_records)} forget{val_info}")
+
+    # Save pre-tri-mask pointwise tokenized datasets
+    target_train_ds = train_ds if (reusing_master or args.val_ratio > 0.0) else unlearn_ds
+    target_val_ds = val_ds if (reusing_master or args.val_ratio > 0.0) else None
+
+    if args.out_plain_train and target_train_ds is not None:
+        save_tokenized_records(target_train_ds.records, args.out_plain_train, tokenizer=tok, max_length=args.max_length)
+
+    if args.out_plain_retain and target_train_ds is not None:
+        recs = [r for r in target_train_ds.records if (r.split_type if hasattr(r, "split_type") else r.get("split_type")) == "retain"]
+        save_tokenized_records(recs, args.out_plain_retain, tokenizer=tok, max_length=args.max_length)
+
+    if args.out_plain_forget and target_train_ds is not None:
+        recs = [r for r in target_train_ds.records if (r.split_type if hasattr(r, "split_type") else r.get("split_type")) == "forget"]
+        save_tokenized_records(recs, args.out_plain_forget, tokenizer=tok, max_length=args.max_length)
+
+    if args.out_plain_val and target_val_ds is not None and len(target_val_ds) > 0:
+        save_tokenized_records(target_val_ds.records, args.out_plain_val, tokenizer=tok, max_length=args.max_length)
+
+    if args.out_plain_test:
+        test_file = split_dir / "master_test.json"
+        if not test_file.is_file():
+            raise FileNotFoundError(f"Test master dataset not found: {test_file}")
+        test_ds = PackageUnlearningDataset(str(test_file), split_type="all", tokenizer=tok, max_length=args.max_length)
+        save_tokenized_records(test_ds.records, args.out_plain_test, tokenizer=tok, max_length=args.max_length)
+
+    if args.contrastive == "true":
+        print("Building CAA contrastive train/test pairwise datasets...")
+        from pkg_halluc.package_loader.generate_contrastive_data import generate_contrastive_dataset
+
+        contrastive_out_dir = main_dir / "contrastive"
+        contrastive_train_input = split_dir / "master_train.json"
+        master_test_path = split_dir / "master_test.json"
+        if not contrastive_train_input.is_file():
+            raise FileNotFoundError(f"CAA train master dataset not found: {contrastive_train_input}")
+        if not master_test_path.is_file():
+            raise FileNotFoundError(f"CAA test master dataset not found: {master_test_path}")
+
+        generate_contrastive_dataset(
+            train_input=contrastive_train_input,
+            test_input=master_test_path,
+            output_base_dirs=[contrastive_out_dir],
+            num_shuffles_per_sample=args.contrastive_num_shuffles,
+            seed=args.seed,
+            test_include_shuffles=False,
+        )
+        print(f"CAA pairwise datasets generated at: {contrastive_out_dir}")
+
+if __name__ == "__main__":
+    main()

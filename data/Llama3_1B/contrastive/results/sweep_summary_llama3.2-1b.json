@@ -1,0 +1,11 @@
+[
+    {
+        "layer": 0,
+        "multiplier": 0.0,
+        "num_samples": 1,
+        "matching_accuracy": 0.0,
+        "hallucination_rate": 1.0,
+        "mean_matching_score": -12.25,
+        "mean_margin": -0.0625
+    }
+]

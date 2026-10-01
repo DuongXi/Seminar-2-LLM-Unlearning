@@ -1,0 +1,337 @@
+# Tri-mask training
+import os
+import json
+import wandb
+import argparse
+import torch
+import datetime
+import glob
+import shutil
+
+from datasets import Dataset, concatenate_datasets
+from typing import Tuple
+
+from transformers import AutoModelForCausalLM, AutoTokenizer, EarlyStoppingCallback, TrainingArguments
+
+from pkg_halluc.common.tri_mask_utils import (
+    load_toklevel_files,
+    TokLevelCollator,
+    load_hf_token,
+    apply_lora,
+)
+from pkg_halluc.training.tri_mask.ga_trainer import GradientAscentTrainer
+from pkg_halluc.training.tri_mask.npo_trainer import NPOTrainer
+
+
+def resolve_dtype(dtype_arg: str) -> torch.dtype:
+    """Auto pick bfloat16 if GPU support, or else float16."""
+    if dtype_arg == "bfloat16":
+        return torch.bfloat16
+    if dtype_arg == "float16":
+        return torch.float16
+    if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+        return torch.bfloat16
+    return torch.float16
+
+
+def main():
+    args = parse_arguments()
+    save_string = args.save_string
+    if args.resume_from_checkpoint:
+        save_string = f"{save_string}_reset"
+    loss_function = args.loss_function
+
+    if args.seed is None:
+        import time
+
+        random_seed = int(time.time() * 1000) % 2**32
+    else:
+        random_seed = args.seed
+
+    datetime_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    if args.use_wandb:
+        wandb.init(
+            project="unlearning-fine-tune",
+            name=f"{save_string}_{datetime_str}",
+            config={
+                "model_path": args.model_path,
+                "save_string": f"{save_string}_{datetime_str}",
+                "loss_function": loss_function,
+                "learning_rate": args.lr,
+                "datetime": datetime_str,
+            },
+        )
+
+    TRAINER_REGISTRY = {
+        "npo": NPOTrainer,
+        "ga": GradientAscentTrainer,
+    }
+
+    trainer_class = TRAINER_REGISTRY[loss_function]
+
+    dtype = resolve_dtype(args.dtype)
+
+    hf_token = load_hf_token() if args.use_hf else None
+    cache_dir = args.cache_dir
+
+    if args.resume_from_checkpoint:
+        ckpt = os.path.abspath(args.resume_from_checkpoint)
+        if not os.path.isdir(ckpt):
+            raise FileNotFoundError(f"No checkpoint found: {ckpt}")
+        print(f"Loading param full-parameter from checkpoint: {ckpt}")
+        model = AutoModelForCausalLM.from_pretrained(
+            ckpt,
+            cache_dir=cache_dir,
+            dtype=dtype,
+            attn_implementation="eager", 
+        )
+        tok_ckpt = os.path.join(ckpt, "tokenizer_config.json")
+        if os.path.isfile(tok_ckpt):
+            tokenizer = AutoTokenizer.from_pretrained(ckpt, cache_dir=cache_dir)
+        else:
+            tokenizer = AutoTokenizer.from_pretrained(
+                args.model_path, token=hf_token, cache_dir=cache_dir
+            )
+    else:
+        print(f"Loading model from {args.model_path}...")
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model_path,
+            token=hf_token,
+            cache_dir=cache_dir,
+            dtype=dtype,
+            attn_implementation="eager",  
+        )
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.model_path, token=hf_token, cache_dir=cache_dir
+        )
+    print("Model loaded!")
+
+
+    if args.use_lora:
+        print(f"Applying LoRA with rank={args.lora_rank} ...")
+        model = apply_lora(model, lora_rank=args.lora_rank)
+
+    # PARAMETERS
+    beta = 0.1 
+    lambda_retain = args.lambda_retain
+    lambda_forget = args.lambda_forget
+    temperature = 2.0 
+    alpha = 0.7 
+    gamma = 0.3  
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    vocab_size = len(tokenizer)
+    print(f"Vocab size: {vocab_size}")
+
+    print("Loading dataset by token...")
+
+    # early stopping
+    early_stopping_enabled = not args.disable_early_stopping
+    retain_train_ds = None
+    retain_val_ds = None
+    if early_stopping_enabled:
+        retain_ds = load_toklevel_files(None, args.retain_file)
+        forget_ds = load_toklevel_files(args.forget_file, None)
+        n_val = max(1, round(len(retain_ds) * args.val_ratio))
+        if len(retain_ds) - n_val < 1:
+            print(
+                f"[train_tri_mask] The retain set is too small ({len(retain_ds)} rows) to create a validation split. "
+                f"with val_ratio={args.val_ratio} -- turn off early stopping."
+            )
+            early_stopping_enabled = False
+        else:
+            retain_split = retain_ds.train_test_split(test_size=n_val, seed=42, shuffle=True)
+            retain_train_ds, retain_val_ds = retain_split["train"], retain_split["test"]
+            train_ds = concatenate_datasets([retain_train_ds, forget_ds])
+            print(
+                f"Early stopping on: retain_train={len(retain_train_ds)} "
+                f"retain_val={len(retain_val_ds)} forget={len(forget_ds)} (val_ratio={args.val_ratio}), "
+                f"eval_steps={args.eval_steps}, patience={args.early_stopping_patience}, "
+                f"threshold={args.early_stopping_threshold}"
+            )
+    if not early_stopping_enabled:
+        train_ds = load_toklevel_files(args.forget_file, args.retain_file)
+
+    collator = TokLevelCollator(
+        pad_token_id=tokenizer.pad_token_id, label_pad_id=-100
+    )
+
+    # Count ignored, retained, and forgotten tokens.
+    def count_tri_mask_tokens(ds: Dataset) -> Tuple[int, int, int]:
+        n0 = n1 = n2 = 0
+        for ex in ds:
+            n0 += ex["tri_mask"].count(0)
+            n1 += ex["tri_mask"].count(1)
+            n2 += ex["tri_mask"].count(2)
+        return n0, n1, n2
+
+    n0_tr, n1_tr, n2_tr = count_tri_mask_tokens(train_ds)
+    n0_ev, n1_ev, n2_ev = count_tri_mask_tokens(retain_val_ds) if early_stopping_enabled else (0, 0, 0)
+    print(f"Token train – ignore:{n0_tr} retain:{n1_tr} forget:{n2_tr}")
+    print(f" Token eval – ignore:{n0_ev} retain:{n1_ev} forget:{n2_ev}")
+
+    # Report to W&B only when enabled.
+    report_to = ["tensorboard"]
+    if args.use_wandb:
+        report_to.append("wandb")
+
+    eval_save_steps = args.eval_steps if early_stopping_enabled else 25
+    training_args_kwargs = dict(
+        output_dir=args.output_dir,
+        num_train_epochs=args.num_train_epochs,
+        learning_rate=args.lr,
+        weight_decay=0.01,
+        warmup_steps=10,
+        logging_strategy="steps",
+        logging_steps=5,
+        eval_strategy=("steps" if early_stopping_enabled else "no"),
+        eval_steps=(eval_save_steps if early_stopping_enabled else None),
+        save_strategy="steps",
+        save_steps=eval_save_steps,
+        save_total_limit=(3 if early_stopping_enabled else 2),
+        load_best_model_at_end=early_stopping_enabled,
+        metric_for_best_model=("eval_loss" if early_stopping_enabled else None),
+        greater_is_better=(False if early_stopping_enabled else None),
+        per_device_train_batch_size=1,
+        per_device_eval_batch_size=1,
+        prediction_loss_only=True,
+        gradient_accumulation_steps=16,
+        gradient_checkpointing=True,
+        bf16=(args.dtype == "bfloat16"),
+        fp16=(args.dtype == "float16"),
+        max_grad_norm=1.0,
+        lr_scheduler_type="constant",
+        report_to=["tensorboard"],
+        remove_unused_columns=False,
+        seed=args.seed,
+    )
+    import inspect
+    sig = inspect.signature(TrainingArguments.__init__).parameters
+    if "eval_strategy" not in sig and "evaluation_strategy" in sig:
+        training_args_kwargs["evaluation_strategy"] = training_args_kwargs.pop("eval_strategy")
+    training_args = TrainingArguments(**training_args_kwargs)
+
+    trainer_kwargs = dict(
+        model=model,
+        args=training_args,
+        train_dataset=train_ds,
+        eval_dataset=retain_val_ds,
+        processing_class=tokenizer,
+        data_collator=collator,
+        lambda_retain=lambda_retain,
+        lambda_forget=lambda_forget,
+        lambda_eos=args.lambda_eos, 
+        vocab_size=vocab_size,
+        beta=beta,
+        callbacks=(
+            [EarlyStoppingCallback(
+                early_stopping_patience=args.early_stopping_patience,
+                early_stopping_threshold=args.early_stopping_threshold,
+            )]
+            if early_stopping_enabled else []
+        ),
+    )
+
+    trainer = trainer_class(**trainer_kwargs)
+
+    print("Training...")
+    trainer.train()
+
+    print("Model saving...")
+    if args.use_lora:
+        model.save_pretrained(args.output_dir)
+        tokenizer.save_pretrained(args.output_dir)
+        print(f"Saved LoRA adapter to {args.output_dir}")
+    else:
+        trainer.save_model(args.output_dir)
+        tokenizer.save_pretrained(args.output_dir)
+
+    if early_stopping_enabled:
+        for ckpt_dir in glob.glob(os.path.join(glob.escape(args.output_dir), "checkpoint-*")):
+            shutil.rmtree(ckpt_dir, ignore_errors=True)
+
+    training_info = {
+        "beta": beta,
+        "lambda_retain": lambda_retain,
+        "vocab_size": vocab_size,
+        "use_lora": args.use_lora,
+        "lora_rank": args.lora_rank if args.use_lora else None,
+        "args": args.__dict__,
+        "train_token_counts": {"ignore": n0_tr, "retain": n1_tr, "forget": n2_tr},
+        "eval_token_counts": {"ignore": n0_ev, "retain": n1_ev, "forget": n2_ev},
+        "temperature": temperature,
+        "alpha": alpha,
+        "gamma": gamma,
+        "early_stopping_enabled": early_stopping_enabled,
+        "retain_train_samples": (len(retain_train_ds) if early_stopping_enabled else None),
+        "retain_val_samples": (len(retain_val_ds) if early_stopping_enabled else 0),
+        "val_ratio": (args.val_ratio if early_stopping_enabled else None),
+        "eval_steps": (eval_save_steps if early_stopping_enabled else None),
+        "early_stopping_patience": (args.early_stopping_patience if early_stopping_enabled else None),
+        "early_stopping_threshold": (args.early_stopping_threshold if early_stopping_enabled else None),
+        "best_eval_loss": (trainer.state.best_metric if early_stopping_enabled else None),
+        "best_checkpoint": (trainer.state.best_model_checkpoint if early_stopping_enabled else None),
+        "total_steps_run": trainer.state.global_step,
+    }
+
+    with open(
+        os.path.join(args.output_dir, "training_info.json"), "w", encoding="utf-8"
+    ) as f:
+        json.dump(training_info, f, indent=2)
+
+    print("Xong")
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model-path", required=True, help="Path to base model")
+    parser.add_argument("--retain_file", required=True, help="Tokenize JSONL retain (tri-mask)")
+    parser.add_argument("--forget_file", required=True, help="Tokenized JSONL forget (tri-mask)")
+    parser.add_argument("--output-dir", required=True, help="Checkpoint dir")
+    parser.add_argument("--cache-dir", default=None, help="Cache in huggingface_hub (optional)")
+    parser.add_argument("--save_string", type=str, help="String appended to the run name (only used for naming on wandb)")
+    parser.add_argument(
+        "--resume_from_checkpoint", type=str, default=None,
+        help=(
+            "Path to an HF model directory or Trainer checkpoint containing the weights. "
+            "Load weights only; optimizer/trainer state is not restored. "
+        ),
+    )
+    parser.add_argument("--loss_function", type=str, choices=["ga", "npo"], required=True, help="")
+    parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")
+    parser.add_argument("--num_train_epochs", type=int, default=60, help="Train epoch")
+    parser.add_argument("--use_wandb", action="store_true", help="Turn on log wandb")
+    parser.add_argument("--deepspeed", type=str, default=None, help="Path to DeepSpeed config")
+    parser.add_argument("--use_hf", action="store_true", help="Use token HF when loading model/tokenizer")
+    parser.add_argument(
+        "--dtype", type=str, default="auto", choices=["auto", "bfloat16", "float16"],
+        help="Auto pick bfloat16, else float16",
+    )
+    parser.add_argument("--lambda_retain", type=float, default=1.0, help="CE loss weight for valid retained tokens (mask=1)")
+    parser.add_argument("--lambda_forget", type=float, default=0.5, help="NPO loss weight for hallucinated tokens (mask=2)")
+    parser.add_argument("--lambda_eos", type=int, default=2, help="Weight for the EOS token to prevent repetition")
+    parser.add_argument("--seed", type=int, default=None, help="Seed")
+    parser.add_argument("--use_lora", action="store_true", help="LoRA adapter train")
+    parser.add_argument("--lora_rank", type=int, default=16, help="LoRA rank (r)")
+    parser.add_argument(
+        "--val_ratio", type=float, default=0.1,
+        help="Val split ratio for early stopping",
+    )
+    parser.add_argument("--eval_steps", type=int, default=25, help="Eval (and save) for N optimizer step")
+    parser.add_argument("--early_stopping_patience", type=int, default=3, help="Stop after a certain number of evaluations without improvement")
+    parser.add_argument(
+        "--early_stopping_threshold", type=float, default=0.0,
+        help="Minimum reduction in eval_loss to count as an improvement",
+    )
+    parser.add_argument(
+        "--disable_early_stopping", action="store_true",
+        help="Train for the specified number of epochs on the entire datasets",
+    )
+
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    main()
