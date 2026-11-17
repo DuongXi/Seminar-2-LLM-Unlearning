@@ -233,3 +233,14 @@ def _extract_solution(raw_prompt: str, completion: str) -> str:
         return code
 
     return raw_prompt + code
+
+def _set_caa_position(caa_wrapper, labels_batch):
+    """Point the CAA hook at the last prompt token (answer boundary)."""
+    if caa_wrapper is None:
+        return
+    row = labels_batch[0]
+    nz = (row != -100).nonzero()
+    if nz.numel() == 0:
+        return
+    first_answer_pos = int(nz[0].item())
+    caa_wrapper.set_from_positions(max(first_answer_pos - 1, 0))

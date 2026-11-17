@@ -11,7 +11,17 @@ from tqdm import tqdm
 import argparse
 
 from utils.model import load_model
-from utils.data import load_split
+from utils.data import load_split, _set_caa_position
+try:
+    from pkg_halluc.CAA.wrapper import ModelWrapper
+except ImportError:
+    print(
+        'PKG_HALLUC + CAA wrapper failed to import!'
+    )
+
+# Uniform forward helper
+def _forward(model, inputs):
+    return model(**inputs)
 
 def compute_min_k_ppl_acc(selected_log_probs, 
                           mask, 
@@ -51,7 +61,9 @@ def compute_min_k_ppl_acc(selected_log_probs,
 def compute_accuracy(model:AutoModelForCausalLM, 
                      tokenizer:AutoTokenizer, 
                      dataset:Dataset, 
-                     batch_size=1):
+                     batch_size=1
+                     , caa_wrapper = None
+                     ):
     """Answer-only evaluator.
 
     Runs the model, gathers log-prob of the true next token, keeps only
@@ -69,7 +81,11 @@ def compute_accuracy(model:AutoModelForCausalLM,
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="", unit="batch"):
             batch = {k: v.to("cuda") for k, v in batch.items()}
-            outputs = model(**batch)
+
+            if "labels" in batch:
+                _set_caa_position(caa_wrapper, batch["labels"])
+
+            outputs = _forward(model, batch)
             logits = outputs.logits
 
             labels = batch["labels"][:, 1:]
@@ -99,6 +115,7 @@ def compute_accuracy(model:AutoModelForCausalLM,
 
 def dataset_metrics(model:AutoModelForCausalLM,
                     dataset:Dataset
+                    , caa_wrapper=None
                     ):
     """Whole-sequence, token-weighted evaluator.
 
@@ -120,11 +137,16 @@ def dataset_metrics(model:AutoModelForCausalLM,
                 for k, v in sample.items()
                 if k in ["input_ids", "attention_mask"]
             }
-
+            if "labels" in inputs:
+                _set_caa_position(caa_wrapper, inputs["labels"])
             # ---- logits ----
-            logits = model(**inputs).logits[:, :-1]          # [1, L-1, V]
-            tgt    = inputs["input_ids"][:, 1:]              # [1, L-1]
-            mask   = inputs["attention_mask"][:, 1:] == 1    # True at real tokens
+            forward_inputs = {k: v for k, v in inputs.items() if k != "labels"}
+            logits = _forward(model, forward_inputs).logits[:, :-1]   
+            # [1, L-1, V]
+            tgt    = forward_inputs["input_ids"][:, 1:]      
+            # [1, L-1]
+            mask   = forward_inputs["attention_mask"][:, 1:] == 1
+            # True at real tokens
 
             # ---- NLL / PPL ----
             logp   = torch.log_softmax(logits, -1)
@@ -140,7 +162,6 @@ def dataset_metrics(model:AutoModelForCausalLM,
     mean_nll = total_nll / total_tokens
     ppl  = math.exp(mean_nll)
     acc  = 100.0 * total_correct / total_tokens 
-
     return mean_nll, ppl, acc
 
 def main():
@@ -150,12 +171,34 @@ def main():
     parser.add_argument("--retainset", type=str, required=False)
     args = parser.parse_args()
 
-    model_path = args.path
     forget_set = args.forgetset
+    caa_wrapper = None
 
-    # Change model loader to before dataloader to mitigate known CUDA errors
-    print(model_path)
-    tokenizer, model = load_model(model_path=model_path)
+    if args.caa_bundle:
+        caa_wrapper = ModelWrapper.from_steering_bundle(
+            bundle_dir=args.caa_bundle,
+            device="cuda",
+        )
+        if args.multiplier is not None:
+            for hook in caa_wrapper.hooks.values():
+                if hook.add_activations is not None:
+                    hook.multiplier = float(args.multiplier)
+
+        model = caa_wrapper.model
+        tokenizer = caa_wrapper.tokenizer
+
+        active = [i for i, h in caa_wrapper.hooks.items()
+                  if h.add_activations is not None]
+        info = ", ".join(
+            f"layer={i} mult={caa_wrapper.hooks[i].multiplier}"
+            for i in active
+        )
+        print(f"[backend] caa({info})")
+    else:
+        print(args.path)
+        model_path = args.path
+        tokenizer, model = load_model(model_path=args.path)
+        print("[backend] vanilla")
 
     forget_dataset = load_split(forget_set)
     forget_dataset.set_format("torch", columns=["input_ids", 
@@ -171,11 +214,13 @@ def main():
                                                     "labels"
                                                     ])
 
-    ppl_forget, acc_forget = compute_accuracy(model, tokenizer, forget_dataset)
+    ppl_forget, acc_forget = compute_accuracy(model, tokenizer, forget_dataset, 
+                                              caa_wrapper=caa_wrapper)
     print(f"Forget dataset PPL: {ppl_forget}")
     print(f"Forget dataset Acc: {acc_forget}")
 
-    mnll, ppl, acc = dataset_metrics(model, forget_dataset)
+    mnll, ppl, acc = dataset_metrics(model, forget_dataset,
+                                     caa_wrapper=caa_wrapper)
     print(f"{forget_set:6} forget  NLL={mnll:.4f}  PPL={ppl:>6.4f}  ACC={acc:5.4f}%")
 
     if retain_set is not None:

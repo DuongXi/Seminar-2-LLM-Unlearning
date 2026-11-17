@@ -13,7 +13,12 @@ from typing import Optional
 
 import torch
 
-from pkg_halluc.CAA.wrapper import ModelWrapper
+try: 
+    from pkg_halluc.CAA.wrapper import ModelWrapper
+except ImportError:
+    print(
+        'PKG_HALLUC + CAA wrapper failed to import!'
+    )
 
 
 # Reasoning-model post-processing

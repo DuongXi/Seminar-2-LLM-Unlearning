@@ -28,17 +28,18 @@ from typing import List
 
 import pandas as pd
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
+# from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from utils.model import load_model
+from utils.backend import load_backend, HFBackend
 from utils.data import (
     _load_words,
-    build_messages,
+    # build_messages,
     normalize_python_package,
     delete_dupes_and_empty,
     strip_code_blocks,
     detect_repetitive_loop,
-    extract_final_response,
+    # extract_final_response,
     check_packages,
     _sanitize_df
 )
@@ -176,10 +177,14 @@ def extract_and_clean_packages(package_string: str,
 
 
 # Generation
-def generate_completions(master_file, outfile,
-                         tokenizer: AutoTokenizer,
-                         model: AutoModelForCausalLM,
-                         is_reasoning_model=False):
+# def generate_completions(master_file, outfile,
+#                          tokenizer: AutoTokenizer,
+#                          model: AutoModelForCausalLM,
+#                          is_reasoning_model=False):
+# Generation — dispatches on the backend object passed in
+def generate_completions(master_file, outfile, backend,
+                         is_reasoning_model=False,
+                         max_new_tokens=512):
     """One completion per row, using that row's own system + user prompt."""
     df = pd.read_json(master_file, lines=True)
 
@@ -188,6 +193,44 @@ def generate_completions(master_file, outfile,
     if missing:
         raise ValueError(f"{master_file} missing columns: {sorted(missing)}")
 
+    # with open(outfile, "w", encoding="utf-8") as output:
+    #     for i, row in tqdm(df.iterrows(), total=len(df),
+    #                        desc="Generating", unit="sample"):
+    #         mode          = int(row["mode"])
+    #         system_prompt = str(row.get("system_prompt", "") or "")
+    #         user_prompt   = str(row.get("user_prompt",   "") or "")
+
+    #         messages = build_messages(system_prompt, user_prompt)
+
+    #         inputs = tokenizer.apply_chat_template(
+    #             messages, add_generation_prompt=True, return_tensors="pt"
+    #         ).to(model.device)
+
+    #         outputs = model.generate(
+    #             **inputs,
+    #             do_sample=False,
+    #             max_new_tokens=1024,
+    #             eos_token_id=tokenizer.eos_token_id,
+    #             pad_token_id=tokenizer.pad_token_id,
+    #             return_dict_in_generate=True,
+    #         )
+
+    #         response = tokenizer.decode(
+    #             outputs.sequences[0, inputs["input_ids"].shape[1]:],
+    #             skip_special_tokens=True,
+    #         )
+    #         if is_reasoning_model:
+    #             response = extract_final_response(response)
+
+    #         json.dump({
+    #             "row_index":     int(i),
+    #             "mode":          mode,
+    #             "system_prompt": system_prompt,
+    #             "user_prompt":   user_prompt,
+    #             "completion":    response,
+    #         }, output)
+    #         output.write("\n")
+    
     with open(outfile, "w", encoding="utf-8") as output:
         for i, row in tqdm(df.iterrows(), total=len(df),
                            desc="Generating", unit="sample"):
@@ -195,27 +238,12 @@ def generate_completions(master_file, outfile,
             system_prompt = str(row.get("system_prompt", "") or "")
             user_prompt   = str(row.get("user_prompt",   "") or "")
 
-            messages = build_messages(system_prompt, user_prompt)
-
-            inputs = tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, return_tensors="pt"
-            ).to(model.device)
-
-            outputs = model.generate(
-                **inputs,
-                do_sample=False,
-                max_new_tokens=1024,
-                eos_token_id=tokenizer.eos_token_id,
-                pad_token_id=tokenizer.pad_token_id,
-                return_dict_in_generate=True,
+            response = backend.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_new_tokens=max_new_tokens,
+                is_reasoning_model=is_reasoning_model,
             )
-
-            response = tokenizer.decode(
-                outputs.sequences[0, inputs["input_ids"].shape[1]:],
-                skip_special_tokens=True,
-            )
-            if is_reasoning_model:
-                response = extract_final_response(response)
 
             json.dump({
                 "row_index":     int(i),
@@ -225,7 +253,6 @@ def generate_completions(master_file, outfile,
                 "completion":    response,
             }, output)
             output.write("\n")
-
 
 # Analysis
 def score_completions(df, pypi_set, fp_set):
@@ -280,7 +307,14 @@ def sum_columns(df, index_name):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path",  required=True)
+    parser.add_argument("--model_path",  default=None,
+                        help="HF model id/path for the vanilla baseline "
+                             "(uses utils.model.load_model)")
+    parser.add_argument("--caa_bundle",  default=None,
+                        help="path to a CAA steering bundle directory "
+                             "(uses caa_loader.load_backend)")
+    parser.add_argument("--multiplier",  type=float, default=None,
+                        help="optional CAA multiplier override")
     parser.add_argument("--data_path",   required=True,
                         help="directory containing pypi_package_names.csv and "
                              "false_positive_packages.csv")
@@ -292,26 +326,68 @@ def main():
                         help="strip </think> preamble from outputs")
     args = parser.parse_args()
 
+    if not args.caa_bundle and not args.model_path:
+        parser.error("provide --caa_bundle or --model_path")
+
+    if args.multiplier is not None and not args.caa_bundle:
+        parser.error("--multiplier only applies with --caa_bundle")
+
     if args.log_level != "off":
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(levelname)s - %(message)s",
         )
 
-    save_path = os.path.join(args.model_path, "package_hallucination_results")
+    # save_path = os.path.join(args.model_path, "package_hallucination_results")
+    # os.makedirs(save_path, exist_ok=True)
+
+    # logging.info("Loading model from %s", args.model_path)
+    # tokenizer, model = load_model(model_path=args.model_path,
+    #                               device_map="cuda",
+    #                               padding_side="left")
+
+    # # ── Phase 1: generate ────────────────────────────────────────────────
+    # completions_file = os.path.join(save_path, "completions.json")
+    # logging.info("Generating completions")
+    # generate_completions(args.master_file, completions_file,
+    #                      tokenizer, model,
+    #                      is_reasoning_model=args.reasoning_model)
+
+    # Output dir: prefer the bundle for CAA runs, model dir otherwise.
+    # When a multiplier is set, suffix it so sweeps don't overwrite.
+    base_dir = args.caa_bundle or args.model_path
+    save_path = os.path.join(base_dir, "package_hallucination_results")
+    if args.multiplier is not None:
+        save_path = os.path.join(
+            base_dir, f"package_hallucination_results_m{args.multiplier}")
     os.makedirs(save_path, exist_ok=True)
 
-    logging.info("Loading model from %s", args.model_path)
-    tokenizer, model = load_model(model_path=args.model_path,
-                                  device_map="cuda",
-                                  padding_side="left")
+    # ── Backend loading ────────────────────────────────────────────────
+    if args.caa_bundle:
+        logging.info("Loading CAA backend from %s", args.caa_bundle)
+        backend = load_backend(
+            caa_bundle=args.caa_bundle,
+            device="cuda",
+            multiplier=args.multiplier,
+        )
+    else:
+        logging.info("Loading model via utils.model.load_model from %s",
+                     args.model_path)
+        tokenizer, model = load_model(
+            model_path=args.model_path,
+            device_map="cuda",
+            padding_side="left",
+        )
+        backend = HFBackend(tokenizer, model)
 
     # ── Phase 1: generate ────────────────────────────────────────────────
     completions_file = os.path.join(save_path, "completions.json")
     logging.info("Generating completions")
-    generate_completions(args.master_file, completions_file,
-                         tokenizer, model,
-                         is_reasoning_model=args.reasoning_model)
+    generate_completions(
+        args.master_file, completions_file, backend,
+        is_reasoning_model=args.reasoning_model,
+        max_new_tokens=args.max_new_tokens,
+    )
 
     # ── Phase 2: merge + score ───────────────────────────────────────────
     logging.info("Merging + scoring")

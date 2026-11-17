@@ -8,26 +8,13 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorWithPadding
 
 from utils.model import load_model
-from utils.data import load_split
+from utils.data import load_split, _set_caa_position
 from pkg_halluc.CAA.wrapper import ModelWrapper
 
 
 # Uniform forward helper
 def _forward(model, inputs):
     return model(**inputs)
-
-
-def _set_caa_position(caa_wrapper, labels_batch):
-    """Point the CAA hook at the last prompt token (answer boundary)."""
-    if caa_wrapper is None:
-        return
-    row = labels_batch[0]
-    nz = (row != -100).nonzero()
-    if nz.numel() == 0:
-        return
-    first_answer_pos = int(nz[0].item())
-    caa_wrapper.set_from_positions(max(first_answer_pos - 1, 0))
-
 
 def compute_min_k_ppl_acc(selected_log_probs, mask, k, predicts_mask):
     average_log_probs = []

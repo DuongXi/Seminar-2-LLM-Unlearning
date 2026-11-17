@@ -50,8 +50,3 @@ def load_model(model_path:str=None,
         tokenizer.padding_side = padding_side
         if padding_side == "left": tokenizer.clean_up_tokenization_spaces = False
     return tokenizer, model
-
-
-
-
-

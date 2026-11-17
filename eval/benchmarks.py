@@ -31,13 +31,38 @@ from utils.model import load_model
 from utils.data import (
     _has_chat_template,
     _build_prompt,
-    _extract_solution
+    _extract_solution,
 )
+try:
+    from pkg_halluc.CAA.wrapper import ModelWrapper
+except ImportError:
+    print(
+        'PKG_HALLUC + CAA wrapper failed to import!'
+    )
+
 
 BENCHMARKS = {
     "humaneval": "openai_humaneval",
     "mbpp": "mbpp",
 }
+
+###
+### CAA Uniform forward helper
+###
+def _set_caa_position(caa_wrapper, prompt_len: int):
+    """Steer from the last prompt token (the one that predicts the first
+    generated token).
+
+    ModelWrapper.generate_text uses `prompt_len - 1` as the from_position,
+    so we match that here. The SteeringHook handles autoregressive decode
+    steps automatically — for seq_len==1 it adds the vector unconditionally.
+    """
+    if caa_wrapper is None:
+        return
+    caa_wrapper.set_from_positions(max(prompt_len - 1, 0))
+###
+### END
+###
 
 
 def generate_solutions(
@@ -49,11 +74,15 @@ def generate_solutions(
     temperature: float,
     batch_size: int,
     model_name: str = "",
+    caa_wrapper=None,
 ) -> dict:
     """
     Generate `n_samples` completions per problem.
     Returns a dict: {task_id: [solution_str, ...]}
     where each solution_str is a complete, runnable Python snippet.
+
+    If caa_wrapper is not None, the CAA hooks are active and the
+    from_position is set to the end of the prompt before each generate call.
     """
     model.eval()
     solutions = {}
@@ -62,6 +91,15 @@ def generate_solutions(
     print(
         f"  Chat template: {'yes' if _has_chat_template(tokenizer) else 'no — using fallback'}"
     )
+
+    if caa_wrapper is not None:
+        active = [i for i, h in caa_wrapper.hooks.items()
+                  if h.add_activations is not None]
+        info = ", ".join(
+            f"layer={i} mult={caa_wrapper.hooks[i].multiplier}"
+            for i in active
+        )
+        print(f"  CAA: {info}")
 
     gen_kwargs = dict(
         max_new_tokens=max_new_tokens,
@@ -84,6 +122,12 @@ def generate_solutions(
             truncation=True,
             max_length=2048,
         ).to(model.device)
+
+        # CAA: steer from the end of the prompt.
+        # With left padding (default for generation), position -1 is the last
+        # real prompt token for every row in the batch, so a single
+        # from_position works for all batch entries.
+        _set_caa_position(caa_wrapper, inputs["input_ids"].shape[1])
 
         with torch.no_grad():
             outputs = model.generate(
@@ -128,15 +172,12 @@ def parse_scores_from_stdout(stdout: str) -> dict:
         base + extra tests
         pass@1: 0.6890
     """
-    import re
-
     # Try the dict repr format first (newer evalplus)
     dict_match = re.search(r"\{['\"]base['\"].*\}", stdout, re.DOTALL)
     if dict_match:
         try:
             # ast.literal_eval handles single-quoted Python dicts
             import ast
-
             return ast.literal_eval(dict_match.group(0))
         except Exception:
             pass
@@ -307,21 +348,58 @@ def run_benchmark(
     temperature: float,
     batch_size: int,
     results_root: str,
+    caa_bundle: str = None,
+    multiplier: float = None,
     tok_pad_side:str="left"
 ):
-    # Show model name
-    ckpt = Path(model_path).resolve()
-    model_name = ckpt.name
+    ### DISPLAY PATH
+    if caa_bundle:
+        ckpt = Path(caa_bundle).resolve()
+        model_name = ckpt.name  # e.g. "best_model_bundle"
+    else:
+        ckpt = Path(model_path).resolve()
+        model_name = ckpt.name
+
     print(f"\n{'='*60}")
-    print(f"Checkpoint : {ckpt}")
+    if caa_bundle:
+        print(f"CAA bundle : {ckpt}")
+    else:
+        print(f"Checkpoint : {ckpt}")
     print(f"Model name : {model_name}")
     print(f"Benchmarks : {benchmarks}")
     print(f"{'='*60}")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer, model = load_model(model_path=model_path,
-                                  device_map=device,
-                                  padding_side=tok_pad_side)
+    ### BACKEND
+    caa_wrapper = None
+    if caa_bundle:
+        caa_wrapper = ModelWrapper.from_steering_bundle(
+            bundle_dir=str(ckpt),
+            device="cuda",
+        )
+        if multiplier is not None:
+            for hook in caa_wrapper.hooks.values():
+                if hook.add_activations is not None:
+                    hook.multiplier = float(multiplier)
+
+        model = caa_wrapper.model
+        tokenizer = caa_wrapper.tokenizer
+
+        active = [i for i, h in caa_wrapper.hooks.items()
+                  if h.add_activations is not None]
+        info = ", ".join(
+            f"layer={i} mult={caa_wrapper.hooks[i].multiplier}"
+            for i in active
+        )
+        print(f"[backend] caa({info})")
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        tokenizer, model = load_model(
+            model_path=model_path,
+            device_map=device,
+            padding_side=tok_pad_side,
+        )
+        print("[backend] vanilla")
+    ### END
 
     all_scores = {}
 
@@ -349,6 +427,7 @@ def run_benchmark(
             temperature=temperature,
             batch_size=batch_size,
             model_name=model_name,
+            caa_wrapper=caa_wrapper,
         )
 
         # Save solutions in evalplus jsonl format
@@ -369,20 +448,29 @@ def run_benchmark(
 
         print(f"  Scores: {scores}")
 
-    # Write a combined summary JSON next to the checkpoint
+    ### SUMMARY
     summary_path = results_dir.parent / f"{model_name}_evalplus_summary.json"
     os.makedirs(os.path.dirname(summary_path), exist_ok=True)
+    summary_payload = {
+        "model": model_name,
+        "checkpoint": str(ckpt),
+        "scores": all_scores,
+    }
+    if caa_bundle:
+        summary_payload["caa"] = {
+            "bundle": str(ckpt),
+            "multiplier": (multiplier if multiplier is not None
+                           else "bundle_default"),
+        }
     with open(summary_path, "w") as f:
-        json.dump({"model": model_name, "checkpoint": str(ckpt), "scores": all_scores}, f, indent=2)
+        json.dump(summary_payload, f, indent=2)
     print(f"\nSummary saved to {summary_path}")
 
-    # Free VRAM before the next checkpoint
     del model
     import gc
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-
     return all_scores
 
 def parse_args():
@@ -391,9 +479,17 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--model",
-                        nargs="+", required=True, help="One or more paths to model checkpoint directories.")
+                        nargs="+", required=False, default=None,
+                        help="One or more paths to model checkpoint directories.")
+    parser.add_argument("--caa_bundle", default=None,
+                        help="Path to a CAA steering bundle. If provided, --model is ignored.")
+    parser.add_argument("--multiplier", type=float, default=None,
+                        help="Optional CAA multiplier override.")
     parser.add_argument("--benchmarks", 
-                        nargs="+", default=["humaneval", "mbpp"], choices=["humaneval", "mbpp"],help="Which benchmarks to run.")
+                        nargs="+", 
+                        default=["humaneval", "mbpp"], 
+                        choices=["humaneval", "mbpp"],
+                        help="Which benchmarks to run.")
     parser.add_argument("--n_samples",
                         type=int, default=1, help="Number of solutions to sample per problem (pass@k denominator).")
     parser.add_argument("--max_new_tokens",
@@ -412,21 +508,43 @@ def parse_args():
 def main():
     args = parse_args()
 
+    if not args.caa_bundle and not args.model:
+        raise SystemExit("Provide --model or --caa_bundle.")
+
+    if args.multiplier is not None and not args.caa_bundle:
+        raise SystemExit("--multiplier only applies with --caa_bundle.")
+
     all_results = {}
-    for model_path in args.model:
-        if not Path(model_path).exists():
-            print(f"[SKIP] Checkpoint not found: {model_path}")
-            continue
+    if args.caa_bundle:
+        if not Path(args.caa_bundle).exists():
+            raise SystemExit(f"[SKIP] CAA bundle not found: {args.caa_bundle}")
         scores = run_benchmark(
-            model_path=model_path,
+            model_path=None,
             benchmarks=args.benchmarks,
             n_samples=args.n_samples,
             max_new_tokens=args.max_new_tokens,
             temperature=args.temperature,
             batch_size=args.batch_size,
             results_root=args.results_dir,
+            caa_bundle=args.caa_bundle,
+            multiplier=args.multiplier,
         )
-        all_results[model_path] = scores
+        all_results[args.caa_bundle] = scores
+    else:
+        for model_path in args.model:
+            if not Path(model_path).exists():
+                print(f"[SKIP] Checkpoint not found: {model_path}")
+                continue
+            scores = run_benchmark(
+                model_path=model_path,
+                benchmarks=args.benchmarks,
+                n_samples=args.n_samples,
+                max_new_tokens=args.max_new_tokens,
+                temperature=args.temperature,
+                batch_size=args.batch_size,
+                results_root=args.results_dir,
+            )
+            all_results[model_path] = scores
 
     print("\n" + "=" * 60)
     print("ALL RESULTS")
@@ -435,6 +553,7 @@ def main():
         print(f"\n{ckpt}")
         for bench, s in scores.items():
             print(f"  {bench}: {s}")
+
 
 if __name__ == "__main__":
     main()

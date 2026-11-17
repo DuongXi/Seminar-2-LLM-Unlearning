@@ -3,5 +3,6 @@ temp/*
 logs/hallu
 logs/hallu_pkg
 logs/benchmarks
-legacy/*
+#legacy/*
 steer/*
+train_logs/*
